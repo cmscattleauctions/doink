@@ -15,9 +15,10 @@ const GLOBAL_CSS = `
   --r-lg:20px;--r-md:14px;--r-sm:10px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#060D08}
+html,body{height:100%;height:100dvh;background:#060D08}
 body{font-family:'DM Sans',system-ui,sans-serif;color:var(--text-primary);touch-action:manipulation;overflow:hidden;-webkit-font-smoothing:antialiased}
-.ios-scroll{position:fixed;inset:0;overflow-y:scroll;-webkit-overflow-scrolling:touch}
+#root{height:100dvh;overflow:hidden}
+.ios-scroll{position:fixed;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;height:100dvh}
 ::-webkit-scrollbar{display:none}
 
 @keyframes dealIn{from{opacity:0;transform:scale(0.12) translateY(-40px) rotate(-14deg)}to{opacity:1;transform:none}}
@@ -3189,7 +3190,7 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, onSignOut, o
 // ─────────────────────────────────────────────────────────
 // CAREER HOME — bankroll, level, daily stake, stats, play
 // ─────────────────────────────────────────────────────────
-function CareerHome({ career, onPlay, onClaimDaily, onResetCareer, onBack, onLeaderboard }) {
+function CareerHome({ career, onPlay, onClaimDaily, onResetCareer, onBack, onLeaderboard, onProfile }) {
   const lvlInfo = xpToNextLevel(career.xp);
   const dailyEligible = canClaimDaily(career);
   const dailyAmount = dailyAmountFor(career);
@@ -3285,6 +3286,14 @@ function CareerHome({ career, onPlay, onClaimDaily, onResetCareer, onBack, onLea
             background:"rgba(255,255,255,0.05)", border:"1px solid rgba(212,168,67,0.3)",
             color:"#F0C96A", fontSize:"0.95rem", fontWeight:600, cursor:"pointer",
           }}>🏆 Leaderboard</button>
+        )}
+        {onProfile && (
+          <button onClick={onProfile} style={{
+            width:"100%", maxWidth:420, marginTop:10,
+            padding:"14px 24px", borderRadius:14,
+            background:"rgba(255,255,255,0.05)", border:"1px solid rgba(212,168,67,0.3)",
+            color:"#F0C96A", fontSize:"0.95rem", fontWeight:600, cursor:"pointer",
+          }}>👤 Profile & Stats</button>
         )}
       </div>
     </div>
@@ -3439,6 +3448,106 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, onContinue }) 
   );
 }
 
+// ─────────────────────────────────────────────────────────
+// PROFILE / STATS — change display name + full career stats
+// ─────────────────────────────────────────────────────────
+function ProfileScreen({ career, onRename, onBack }) {
+  const [name, setName] = useState(career.playerName || "Player");
+  const [saved, setSaved] = useState(false);
+  const lvlInfo = xpToNextLevel(career.xp);
+  const winRate = career.sessionsPlayed > 0
+    ? Math.round((career.sessionsWon / career.sessionsPlayed) * 100)
+    : 0;
+  const card = { background:"rgba(255,255,255,0.03)", borderRadius:16, padding:"16px 18px", border:"1px solid rgba(255,255,255,0.08)" };
+
+  const commitName = () => {
+    const clean = name.trim().slice(0, 20) || "Player";
+    setName(clean);
+    onRename(clean);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  };
+
+  const stats = [
+    { label: "Level",          value: career.level },
+    { label: "Total XP",       value: career.xp },
+    { label: "Sessions",       value: career.sessionsPlayed },
+    { label: "Sessions Won",   value: career.sessionsWon },
+    { label: "Win Rate",       value: `${winRate}%` },
+    { label: "Best Streak",    value: career.bestStreak },
+    { label: "Current Streak", value: career.currentStreak },
+    { label: "Rounds Played",  value: career.totalRoundsPlayed },
+    { label: "Total Profit",   value: `${career.totalCareerProfit>=0?"+":"−"}$${Math.abs(career.totalCareerProfit).toLocaleString()}`, color: career.totalCareerProfit>=0?"#27AE60":"#E74C3C" },
+    { label: "Biggest Win",    value: `$${career.biggestPotWon.toLocaleString()}` },
+    { label: "Worst Doink",    value: `$${career.biggestDoinkLoss.toLocaleString()}`, color:"#E74C3C" },
+    { label: "Doink Bets Hit", value: career.doinkBetsHit },
+    { label: "Mythicals Hit",  value: career.mythicalHits },
+    { label: "Hands Bought",   value: career.handsBought },
+    { label: "Hands Sold",     value: career.handsSold },
+  ];
+
+  return (
+    <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)" }}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:`calc(env(safe-area-inset-top) + 18px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
+        {/* Header */}
+        <div style={{ width:"100%", maxWidth:440, display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+          <button onClick={onBack} style={{ ...sBtn, padding:"8px 14px", fontSize:"0.85rem" }}>← Back</button>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", color:"#D4A843", fontWeight:700, letterSpacing:"0.04em" }}>Profile</div>
+          <div style={{ width:60 }}/>
+        </div>
+
+        {/* Name editor */}
+        <div style={{ ...card, width:"100%", maxWidth:440, marginBottom:14 }}>
+          <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase", marginBottom:10 }}>Display Name</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              maxLength={20}
+              placeholder="Player"
+              style={{
+                flex:1, padding:"12px 14px", borderRadius:12,
+                background:"rgba(0,0,0,0.4)", border:"1.5px solid rgba(212,168,67,0.3)",
+                color:"#F5EDD8", fontSize:"1rem", fontFamily:"'DM Sans',sans-serif", outline:"none",
+              }}
+            />
+            <button onClick={commitName} style={{ ...gBtn, padding:"12px 18px", fontSize:"0.9rem" }}>
+              {saved ? "Saved ✓" : "Save"}
+            </button>
+          </div>
+          <div style={{ fontSize:"0.72rem", color:"rgba(245,237,216,0.4)", marginTop:8 }}>
+            This is the name shown on the leaderboard.
+          </div>
+        </div>
+
+        {/* XP card */}
+        <div style={{ ...card, width:"100%", maxWidth:440, marginBottom:14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
+            <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.1rem", color:"#F0C96A", fontWeight:700 }}>Level {career.level}</span>
+            <span style={{ fontSize:"0.72rem", color:"rgba(245,237,216,0.45)" }}>{lvlInfo.current} / {lvlInfo.needed} XP</span>
+          </div>
+          <div style={{ height:8, background:"rgba(0,0,0,0.5)", borderRadius:6, overflow:"hidden", border:"1px solid rgba(212,168,67,0.18)" }}>
+            <div style={{ height:"100%", width:`${Math.min(100,(lvlInfo.current/lvlInfo.needed)*100)}%`, background:"linear-gradient(90deg, #8A6418, #F4D27A)" }}/>
+          </div>
+        </div>
+
+        {/* Full stats grid */}
+        <div style={{ ...card, width:"100%", maxWidth:440 }}>
+          <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase", marginBottom:12 }}>Career Stats</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            {stats.map(s => (
+              <div key={s.label} style={{ background:"rgba(0,0,0,0.3)", borderRadius:10, padding:"9px 11px", border:"1px solid rgba(255,255,255,0.04)" }}>
+                <div style={{ fontSize:"0.6rem", letterSpacing:"0.12em", color:"rgba(245,237,216,0.45)", fontWeight:600, textTransform:"uppercase", marginBottom:3 }}>{s.label}</div>
+                <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", color:s.color||"#F0C96A", fontWeight:700, lineHeight:1 }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════
 // APP — routes between Home, Career screens, Tutorial, Setup, Game
 // ═══════════════════════════════════════════════════════════
@@ -3539,6 +3648,15 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
       onResetCareer={handleResetCareer}
       onBack={() => setRoute("home")}
       onLeaderboard={onShowLeaderboard}
+      onProfile={() => setRoute("profile")}
+    />
+  );
+
+  if (route === "profile" && career) return (
+    <ProfileScreen
+      career={career}
+      onRename={(newName) => setCareer(c => ({ ...c, playerName: newName }))}
+      onBack={() => setRoute("careerHome")}
     />
   );
 
