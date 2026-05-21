@@ -137,14 +137,19 @@ const CAREER_KEY = "doinkCareerV1";
 
 const CAREER_TABLES = [
   { id: "garage",     name: "Garage Game",         subtitle: "Low stakes. Friendly chaos.",       minBankroll: 0,     buyIn: 100,  bots: 3, ante: 1,  unlockLevel: 1,
+    themeId: "garage-green",      cardBackId: "classic-doink",   chipSetId: "house-chips",
     rivals: ["Cody", "Isaac", "Graham", "Jerry"] },
   { id: "backroom",   name: "Backroom Table",      subtitle: "Bigger pots. Meaner bots.",         minBankroll: 500,   buyIn: 250,  bots: 4, ante: 2,  unlockLevel: 4,
+    themeId: "backroom-blue",     cardBackId: "black-label",     chipSetId: "backroom-matte",
     rivals: ["Cody", "Jerry", "Parker", "Emmanuel", "Rube"] },
   { id: "riverboat",  name: "Riverboat Room",      subtitle: "The doinks start hurting.",         minBankroll: 1500,  buyIn: 500,  bots: 5, ante: 5,  unlockLevel: 9,
+    themeId: "riverboat-red",     cardBackId: "riverboat-crest", chipSetId: "riverboat-brass",
     rivals: ["Michael", "Parker", "Landen", "Emmanuel", "Houston"] },
   { id: "highroller", name: "High Roller Pit",     subtitle: "One doink can ruin your week.",     minBankroll: 5000,  buyIn: 1000, bots: 6, ante: 10, unlockLevel: 16,
+    themeId: "high-roller-black", cardBackId: "high-roller-gold",chipSetId: "high-roller-premium",
     rivals: ["Dalton", "Jayton", "Landen", "Houston", "Michael", "Rube"] },
   { id: "mythic",     name: "Mythic Invitational", subtitle: "Big money. Brutal bots.",           minBankroll: 15000, buyIn: 2500, bots: 7, ante: 25, unlockLevel: 25,
+    themeId: "mythic-purple",     cardBackId: "mythic-crown",    chipSetId: "mythic-gold",
     rivals: ["Dalton", "Jayton", "Landen", "Houston", "Michael", "Parker", "Emmanuel"] },
 ];
 
@@ -171,13 +176,23 @@ const createDefaultCareer = (playerName = "Player") => ({
   lastDailyAmount: 0,
   dailyCap: 500,
   achievements: [],
+  // Quick Play unlock milestones (4/9/16/25) the player has already been
+  // shown the reward popup for. Prevents the popup repeating.
+  shownUnlocks: [],
 });
 
 // Merge any stored career object with current defaults so older saves stay
 // valid as new fields are added. Used by App.jsx after a Firestore read.
 const normalizeCareer = (stored, playerName) => {
   if (!stored) return null;
-  return { ...createDefaultCareer(playerName), ...stored };
+  const merged = { ...createDefaultCareer(playerName), ...stored };
+  // If an existing save predates the unlock-popup feature, treat every
+  // milestone they've already passed as "already seen" so they aren't
+  // spammed with popups for unlocks they earned before the feature existed.
+  if (!Array.isArray(stored.shownUnlocks)) {
+    merged.shownUnlocks = [4, 9, 16, 25].filter(m => (merged.level || 1) >= m);
+  }
+  return merged;
 };
 
 const todayKey = () => {
@@ -294,6 +309,174 @@ const pickCareerRivals = (table) => {
   }
   return [...pool, ...extra].slice(0, table.bots);
 };
+
+// ═══════════════════════════════════════════════════════════
+// QUICK PLAY CUSTOMIZATION — unlockable cosmetics & settings
+// ───────────────────────────────────────────────────────────
+// Career level is the single gate. Every unlockable item carries an
+// `unlockLevel`; helpers below filter by the player's current level.
+// Career tables themselves are UNCHANGED — this only feeds Quick Play.
+// ═══════════════════════════════════════════════════════════
+
+const UNLOCK_LEVELS = { garage: 1, backroom: 4, riverboat: 9, highRoller: 16, mythic: 25 };
+
+// ── Table themes ────────────────────────────────────────────
+const TABLE_THEMES = [
+  { id: "garage-green",      name: "Garage Green",      unlockLevel: 1,  felt: "#14532d", feltDark: "#062015", rail: "#3b2a18", accent: "#d4a843" },
+  { id: "backroom-blue",     name: "Backroom Blue",     unlockLevel: 4,  felt: "#12304a", feltDark: "#071827", rail: "#111827", accent: "#d4a843" },
+  { id: "riverboat-red",     name: "Riverboat Red",     unlockLevel: 9,  felt: "#5b1118", feltDark: "#25060a", rail: "#3b2414", accent: "#f0c96a" },
+  { id: "high-roller-black", name: "High Roller Black", unlockLevel: 16, felt: "#080808", feltDark: "#020202", rail: "#1f1f1f", accent: "#f0c96a" },
+  { id: "mythic-purple",     name: "Mythic Purple",     unlockLevel: 25, felt: "#2d124a", feltDark: "#100719", rail: "#1a1028", accent: "#f0c96a" },
+];
+
+// ── Card backs ──────────────────────────────────────────────
+// `back` is a CSS background string; `border` the rim color.
+const CARD_BACKS = [
+  { id: "classic-doink",  name: "Classic Doink",  unlockLevel: 1,
+    back: "linear-gradient(145deg,#0E4A1E,#0A3315)", border: "#C9B58A", motif: "#F4E4B8" },
+  { id: "black-label",    name: "Black Label",    unlockLevel: 4,
+    back: "linear-gradient(145deg,#1A1A1A,#080808)", border: "#D4A843", motif: "#F0C96A" },
+  { id: "riverboat-crest",name: "Riverboat Crest",unlockLevel: 9,
+    back: "linear-gradient(145deg,#5B1118,#2A070B)", border: "#F0C96A", motif: "#F4D27A" },
+  { id: "high-roller-gold",name:"High Roller Gold",unlockLevel: 16,
+    back: "linear-gradient(145deg,#1C1407,#070502)", border: "#F4D27A", motif: "#F0C96A" },
+  { id: "mythic-crown",   name: "Mythic Crown",   unlockLevel: 25,
+    back: "linear-gradient(145deg,#2D124A,#100719)", border: "#F4D27A", motif: "#C9A8E8" },
+];
+
+// ── Chip sets ───────────────────────────────────────────────
+// `colors` maps denomination → hex. Falls back per-set if a denom is absent.
+const CHIP_SETS = [
+  { id: "house-chips",        name: "House Chips",        unlockLevel: 1,
+    swatch: ["#C0392B", "#2980B9", "#ECF0F1"],
+    colors: { 1:"#ECF0F1", 2:"#95A5A6", 5:"#C0392B", 10:"#2980B9", 25:"#27AE60", 50:"#8E44AD", 100:"#2C3E50", 500:"#1A1A1A" } },
+  { id: "backroom-matte",     name: "Backroom Matte",     unlockLevel: 4,
+    swatch: ["#1A1A1A", "#3A3A3A", "#D4A843"],
+    colors: { 1:"#5A5A5A", 2:"#3A3A3A", 5:"#7A2A2A", 10:"#2A3A4A", 25:"#2A4A2A", 50:"#3A2A4A", 100:"#1A1A1A", 500:"#D4A843" } },
+  { id: "riverboat-brass",    name: "Riverboat Brass",    unlockLevel: 9,
+    swatch: ["#8C1A1A", "#B8923E", "#E8DCC0"],
+    colors: { 1:"#E8DCC0", 2:"#C9B58A", 5:"#8C1A1A", 10:"#6E4A1A", 25:"#4A6E2A", 50:"#6E2A4A", 100:"#B8923E", 500:"#3A2A14" } },
+  { id: "high-roller-premium",name: "High Roller Premium",unlockLevel: 16,
+    swatch: ["#0A0A0A", "#F0C96A", "#FFFFFF"],
+    colors: { 1:"#FFFFFF", 2:"#C8C8C8", 5:"#8A1A1A", 10:"#1A3A6A", 25:"#1A5A2A", 50:"#4A1A6A", 100:"#0A0A0A", 500:"#F0C96A" } },
+  { id: "mythic-gold",        name: "Mythic Gold",        unlockLevel: 25,
+    swatch: ["#F0C96A", "#5B2A8C", "#1A1028"],
+    colors: { 1:"#E8DCC0", 2:"#C9A8E8", 5:"#8C2A2A", 10:"#3A2A6A", 25:"#2A5A3A", 50:"#5B2A8C", 100:"#1A1028", 500:"#F0C96A" } },
+];
+
+// ── Avatars ─────────────────────────────────────────────────
+// Each avatar maps to a seed (drives the existing Greek-bust medallion)
+// plus an `accent` for tile styling.
+const QP_AVATARS = [
+  { id: "rookie",            name: "Rookie",            unlockLevel: 1,  seed: 0, accent: "#7E8388" },
+  { id: "cowboy",            name: "Cowboy",            unlockLevel: 1,  seed: 1, accent: "#9A8660" },
+  { id: "hoodie",            name: "Hoodie",            unlockLevel: 1,  seed: 2, accent: "#6C7A82" },
+  { id: "backroom-regular",  name: "Backroom Regular",  unlockLevel: 4,  seed: 3, accent: "#867E8E" },
+  { id: "sunglasses",        name: "Sunglasses",        unlockLevel: 4,  seed: 4, accent: "#8E7C58" },
+  { id: "riverboat-gambler", name: "Riverboat Gambler", unlockLevel: 9,  seed: 5, accent: "#6E7E74" },
+  { id: "mustache",          name: "Mustache",          unlockLevel: 9,  seed: 6, accent: "#80848A" },
+  { id: "high-roller",       name: "High Roller",       unlockLevel: 16, seed: 7, accent: "#8C746A" },
+  { id: "black-hat",         name: "Black Hat",         unlockLevel: 16, seed: 2, accent: "#1F1F1F" },
+  { id: "mythic-shark",      name: "Mythic Shark",      unlockLevel: 25, seed: 5, accent: "#5B2A8C" },
+  { id: "gold-suit",         name: "Gold Suit",         unlockLevel: 25, seed: 7, accent: "#F0C96A" },
+  { id: "final-boss",        name: "Final Boss",        unlockLevel: 25, seed: 0, accent: "#D4A843" },
+];
+
+// ── Numeric game settings (each value gated by level) ───────
+const BOT_COUNT_OPTIONS  = [{ value:3, unlockLevel:1 }, { value:4, unlockLevel:4 }, { value:5, unlockLevel:9 }, { value:6, unlockLevel:16 }, { value:7, unlockLevel:25 }];
+const BUYIN_OPTIONS      = [{ value:100, unlockLevel:1 }, { value:250, unlockLevel:4 }, { value:500, unlockLevel:9 }, { value:1000, unlockLevel:16 }, { value:2500, unlockLevel:25 }];
+const ANTE_OPTIONS       = [{ value:1, unlockLevel:1 }, { value:2, unlockLevel:4 }, { value:5, unlockLevel:9 }, { value:10, unlockLevel:16 }, { value:25, unlockLevel:25 }];
+const REPLENISH_OPTIONS  = [{ value:100, unlockLevel:1 }, { value:250, unlockLevel:4 }, { value:500, unlockLevel:9 }, { value:1000, unlockLevel:16 }, { value:2500, unlockLevel:25 }];
+
+// ── Presets ─────────────────────────────────────────────────
+const QP_PRESETS = [
+  { id:"casual",     name:"Casual",      unlockLevel:1,  themeId:"garage-green",      chipId:"house-chips",         cardId:"classic-doink",   bots:3, buyIn:100,  ante:1,  replenish:100  },
+  { id:"backroom",   name:"Backroom",    unlockLevel:4,  themeId:"backroom-blue",     chipId:"backroom-matte",      cardId:"black-label",     bots:4, buyIn:250,  ante:2,  replenish:250  },
+  { id:"riverboat",  name:"Riverboat",   unlockLevel:9,  themeId:"riverboat-red",     chipId:"riverboat-brass",     cardId:"riverboat-crest", bots:5, buyIn:500,  ante:5,  replenish:500  },
+  { id:"highroller", name:"High Roller", unlockLevel:16, themeId:"high-roller-black", chipId:"high-roller-premium", cardId:"high-roller-gold",bots:6, buyIn:1000, ante:10, replenish:1000 },
+  { id:"mythic",     name:"Mythic",      unlockLevel:25, themeId:"mythic-purple",     chipId:"mythic-gold",         cardId:"mythic-crown",    bots:7, buyIn:2500, ante:25, replenish:2500 },
+];
+
+// ── Unlock helpers — single source of truth ─────────────────
+const isUnlocked = (item, careerLevel) => (careerLevel || 1) >= (item.unlockLevel || 1);
+const getUnlockedOptions = (options, careerLevel) => options.filter(o => isUnlocked(o, careerLevel));
+
+// Pick a safe option from a list given a desired value. Falls back to the
+// highest unlocked option, then the first option.
+//   options     — array of {unlockLevel, ...}
+//   careerLevel — player's level
+//   wantedVal   — the value we'd like (matched against option[key])
+//   key         — which field to match on ("id" or "value")
+const resolveUnlocked = (options, careerLevel, wantedVal, key = "id") => {
+  const unlocked = getUnlockedOptions(options, careerLevel);
+  if (unlocked.length === 0) return options[0];
+  const match = unlocked.find(o => o[key] === wantedVal);
+  if (match) return match;
+  // highest unlocked = last in the (level-ascending) list
+  return unlocked[unlocked.length - 1];
+};
+
+// Quick Play settings persistence (separate from career; localStorage).
+const QP_SETTINGS_KEY = "doinkQuickPlayV1";
+const loadQuickPlaySettings = () => {
+  try {
+    const raw = localStorage.getItem(QP_SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+};
+const saveQuickPlaySettings = (s) => {
+  try { localStorage.setItem(QP_SETTINGS_KEY, JSON.stringify(s)); } catch {}
+};
+
+// Given saved settings + career level, produce a fully valid settings object
+// (every selection guaranteed unlocked).
+const sanitizeQuickPlaySettings = (saved, careerLevel) => {
+  const s = saved || {};
+  const theme = resolveUnlocked(TABLE_THEMES, careerLevel, s.tableThemeId, "id");
+  const chip  = resolveUnlocked(CHIP_SETS,    careerLevel, s.chipSetId, "id");
+  const card  = resolveUnlocked(CARD_BACKS,   careerLevel, s.cardBackId, "id");
+  const avi   = resolveUnlocked(QP_AVATARS,   careerLevel, s.avatarId, "id");
+  const bots  = resolveUnlocked(BOT_COUNT_OPTIONS, careerLevel, s.botCount, "value");
+  const buyIn = resolveUnlocked(BUYIN_OPTIONS,     careerLevel, s.buyIn, "value");
+  const ante  = resolveUnlocked(ANTE_OPTIONS,      careerLevel, s.ante, "value");
+  const repl  = resolveUnlocked(REPLENISH_OPTIONS, careerLevel, s.replenishAmount, "value");
+  return {
+    tableThemeId: theme.id,
+    chipSetId: chip.id,
+    cardBackId: card.id,
+    avatarId: avi.id,
+    botCount: bots.value,
+    buyIn: buyIn.value,
+    ante: ante.value,
+    replenishAmount: repl.value,
+  };
+};
+
+// Lookups by id
+const themeById = id => TABLE_THEMES.find(t => t.id === id) || TABLE_THEMES[0];
+const chipSetById = id => CHIP_SETS.find(c => c.id === id) || CHIP_SETS[0];
+const cardBackById = id => CARD_BACKS.find(c => c.id === id) || CARD_BACKS[0];
+const avatarById = id => QP_AVATARS.find(a => a.id === id) || QP_AVATARS[0];
+
+// Which unlock milestones a level has passed (for the reward popup).
+const milestonesForLevel = lvl => [4, 9, 16, 25].filter(m => lvl >= m);
+
+// ── Active cosmetics (Quick Play) ───────────────────────────
+// Only one Game renders at a time, so a module-level holder is a safe,
+// low-touch way to feed the selected card back / chip set into the many
+// Card and chip components without threading props through every callsite.
+// Game sets this on mount; it's null for Career mode (default look).
+let ACTIVE_COSMETICS = { cardBack: null, chipSet: null };
+const setActiveCosmetics = (cardBack, chipSet) => { ACTIVE_COSMETICS = { cardBack, chipSet }; };
+// Resolve a chip color for a denomination from the active chip set, with a
+// sensible default palette when no Quick Play set is active.
+const DEFAULT_CHIP_COLORS = { 1:"#9E9E9E",2:"#757575",5:"#E74C3C",10:"#2980B9",25:"#27AE60",50:"#8E44AD",100:"#D4A843",500:"#2C2C2C" };
+const chipColorFor = d => {
+  const set = ACTIVE_COSMETICS.chipSet;
+  if (set && set.colors && set.colors[d] != null) return set.colors[d];
+  return DEFAULT_CHIP_COLORS[d] || "#888";
+};
+
 
 // ─────────────────────────────────────────────────────────
 // AVATAR MEDALLIONS — premium Greek-bust portraits in metal frames
@@ -698,6 +881,11 @@ function Card({ card, faceDown = false, small = false, animClass = "deal-anim", 
   const W = (small ? 46 : 82) * scale, H = (small ? 64 : 116) * scale;
   const isRed = RED.has(card?.suit);
   const color = faceDown ? "#A07030" : isRed ? "#C0392B" : "#0D0D1A";
+  // Active Quick Play card back (null in Career → default brown back).
+  const cb = ACTIVE_COSMETICS.cardBack;
+  const backBg = cb ? cb.back : "linear-gradient(145deg,#1C0A02,#0F0601)";
+  const backBorder = cb ? cb.border : "#5A3010";
+  const backMotif = cb ? cb.motif : "#A07030";
   // Scale typography and padding with size so the card looks proportional
   const rankSize = (small ? 0.78 : 1.25) * scale;
   const suitSize = (small ? 0.7 : 1.05) * scale;
@@ -705,15 +893,15 @@ function Card({ card, faceDown = false, small = false, animClass = "deal-anim", 
   return (
     <div className={faceDown ? "" : animClass} style={{
       animationDelay: `${delay}s`, width: W, height: H, borderRadius: (small ? 8 : 11) * scale, flexShrink: 0,
-      background: faceDown ? "linear-gradient(145deg,#1C0A02,#0F0601)" : "linear-gradient(160deg,#FFFFFF 0%,#F8F3E4 100%)",
-      border: glow ? "2.5px solid #D4A843" : faceDown ? "1px solid #5A3010" : "1px solid rgba(0,0,0,0.12)",
+      background: faceDown ? backBg : "linear-gradient(160deg,#FFFFFF 0%,#F8F3E4 100%)",
+      border: glow ? "2.5px solid #D4A843" : faceDown ? `1px solid ${backBorder}` : "1px solid rgba(0,0,0,0.12)",
       boxShadow: glow ? "0 0 20px rgba(212,168,67,0.65),0 6px 20px rgba(0,0,0,0.8)" : "0 4px 16px rgba(0,0,0,0.75),0 1px 3px rgba(0,0,0,0.3)",
       display: "flex", flexDirection: "column", justifyContent: "space-between",
       padding: `${(small ? 3 : 5) * scale}px ${(small ? 4 : 7) * scale}px`, userSelect: "none",
     }}>
       {faceDown
-        ? <div style={{ flex:1, borderRadius: (small?5:8)*scale, background:"repeating-linear-gradient(45deg,rgba(140,100,40,0.1) 0,rgba(140,100,40,0.1) 1px,transparent 1px,transparent 9px)", border:"1px solid rgba(160,112,48,0.18)", display:"flex",alignItems:"center",justifyContent:"center" }}>
-            <span style={{fontSize:`${bigSuitSize}rem`, opacity:0.2}}>◆</span>
+        ? <div style={{ flex:1, borderRadius: (small?5:8)*scale, border:`1px solid ${backMotif}`, display:"flex",alignItems:"center",justifyContent:"center", opacity:0.85 }}>
+            <span style={{fontSize:`${bigSuitSize}rem`, color:backMotif, opacity:0.55}}>◆</span>
           </div>
         : <>
           <div style={{ lineHeight:1 }}>
@@ -740,14 +928,13 @@ function Placeholder({ small, scale = 1 }) {
 // ─────────────────────────────────────────────────────────
 function ChipPile({ amount }) {
   if (!amount) return null;
-  const COLORS = { 1: "#bbb", 2: "#999", 5: "#e74c3c", 10: "#2980b9", 25: "#27ae60", 50: "#8e44ad", 100: "#c9a84c", 500: "#222" };
   const DENOMS = [500, 100, 50, 25, 10, 5, 2, 1];
   const chips = []; let rem = amount;
   for (const d of DENOMS) { while (rem >= d && chips.length < 10) { chips.push(d); rem -= d; } }
   return (
     <div style={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center", alignItems: "flex-end", maxWidth: 80 }}>
       {chips.map((d, i) => (
-        <div key={i} style={{ width: 13, height: 13, borderRadius: "50%", background: COLORS[d] || "#888", border: "2px dashed rgba(255,255,255,0.35)", boxShadow: "0 2px 4px rgba(0,0,0,0.5)", animation: `chipBob ${0.9 + i * 0.07}s ease-in-out infinite`, animationDelay: `${i * 0.1}s` }} />
+        <div key={i} style={{ width: 13, height: 13, borderRadius: "50%", background: chipColorFor(d), border: "2px dashed rgba(255,255,255,0.35)", boxShadow: "0 2px 4px rgba(0,0,0,0.5)", animation: `chipBob ${0.9 + i * 0.07}s ease-in-out infinite`, animationDelay: `${i * 0.1}s` }} />
       ))}
     </div>
   );
@@ -870,12 +1057,11 @@ function Avatar({ seed = 0, size = 36, active = false, name, isHuman = false }) 
 // CHIP SELECTOR
 // ─────────────────────────────────────────────────────────
 function ChipSelector({ denoms, max, value, onChange }) {
-  const COLORS = { 1:"#9E9E9E",2:"#757575",5:"#E74C3C",10:"#2980B9",25:"#27AE60",50:"#8E44AD",100:"#D4A843",500:"#2C2C2C" };
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, maxWidth:340, margin:"0 auto" }}>
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", justifyContent:"center" }}>
         {denoms.filter(d => d <= max).map(d => (
-          <button key={d} onClick={() => onChange(Math.min(value + d, max))} style={{ width:52, height:52, borderRadius:"50%", border:"2.5px solid rgba(255,255,255,0.3)", background:COLORS[d]||"#555", color:"#fff", fontWeight:700, fontSize:"0.75rem", boxShadow:"0 4px 12px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.2)" }}>+{d}</button>
+          <button key={d} onClick={() => onChange(Math.min(value + d, max))} style={{ width:52, height:52, borderRadius:"50%", border:"2.5px solid rgba(255,255,255,0.3)", background:chipColorFor(d), color:"#fff", fontWeight:700, fontSize:"0.75rem", boxShadow:"0 4px 12px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.2)" }}>+{d}</button>
         ))}
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:16, background:"rgba(0,0,0,0.3)", borderRadius:16, padding:"10px 20px", border:"1px solid rgba(255,255,255,0.08)" }}>
@@ -1184,107 +1370,281 @@ function RulesPage({ onClose }) {
 // ─────────────────────────────────────────────────────────
 // SETUP
 // ─────────────────────────────────────────────────────────
-function Setup({ onStart, onShowTutorial, onBack }) {
-  const nH = 1;
-  const [nB, setNB] = useState(3);
-  const [chips, setChips] = useState(100);
-  const [replenish, setReplenish] = useState(1);
-  const [denoms, setDenoms] = useState([1, 5, 10, 25, 50, 100]);
-  const [name, setName] = useState("");
-  const [orientation, setOrientation] = useState("portrait");
-  const [hintsDefault, setHintsDefault] = useState(true);
-  const [showAdv, setShowAdv] = useState(false);
+// ─────────────────────────────────────────────────────────
+// QUICK PLAY SETUP — customization screen (themes, chips, cards,
+// avatar, settings). Everything gated by career level.
+// ─────────────────────────────────────────────────────────
+function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName = "Player" }) {
+  const lvl = careerLevel || 1;
 
-  const toggleD = d => setDenoms(p => p.includes(d) ? (p.length > 1 ? p.filter(x => x !== d) : p) : [...p, d].sort((a, b) => a - b));
-  const valid = nB >= 1 && nB <= 7 && chips >= 10;
-  const pill = on => ({ padding:"10px 18px", borderRadius:22, fontSize:"0.9rem", fontWeight:600, background:on?"rgba(212,168,67,0.18)":"rgba(255,255,255,0.05)", border:on?"1.5px solid #D4A843":"1.5px solid rgba(255,255,255,0.1)", color:on?"#D4A843":"rgba(245,237,216,0.45)", transition:"all .15s" });
-  const card = { background:"rgba(255,255,255,0.03)", borderRadius:16, padding:"16px 18px", border:"1px solid rgba(255,255,255,0.07)" };
+  // Initialize from saved settings, sanitized against the current level.
+  const [sel, setSel] = useState(() => sanitizeQuickPlaySettings(loadQuickPlaySettings(), lvl));
+
+  // Persist on every change.
+  useEffect(() => { saveQuickPlaySettings(sel); }, [sel]);
+
+  const set = (patch) => setSel(s => ({ ...s, ...patch }));
+
+  // Apply a preset (only if unlocked).
+  const applyPreset = (preset) => {
+    if (!isUnlocked(preset, lvl)) return;
+    set({
+      tableThemeId: preset.themeId,
+      chipSetId: preset.chipId,
+      cardBackId: preset.cardId,
+      botCount: preset.bots,
+      buyIn: preset.buyIn,
+      ante: preset.ante,
+      replenishAmount: preset.replenish,
+    });
+  };
+
+  // Randomize across unlocked options only.
+  const randomize = () => {
+    const pick = (opts, key = "id") => {
+      const u = getUnlockedOptions(opts, lvl);
+      return u[0 | Math.random() * u.length][key];
+    };
+    set({
+      tableThemeId: pick(TABLE_THEMES),
+      chipSetId: pick(CHIP_SETS),
+      cardBackId: pick(CARD_BACKS),
+      avatarId: pick(QP_AVATARS),
+      botCount: pick(BOT_COUNT_OPTIONS, "value"),
+      buyIn: pick(BUYIN_OPTIONS, "value"),
+      ante: pick(ANTE_OPTIONS, "value"),
+      replenishAmount: pick(REPLENISH_OPTIONS, "value"),
+    });
+  };
+
+  const theme = themeById(sel.tableThemeId);
+  const chipSet = chipSetById(sel.chipSetId);
+  const cardBack = cardBackById(sel.cardBackId);
+
+  const card = { background:"rgba(255,255,255,0.03)", borderRadius:16, padding:"16px 16px", border:"1px solid rgba(255,255,255,0.07)" };
+  const sectionLabel = { fontSize:"0.66rem", letterSpacing:"0.18em", color:"rgba(212,168,67,0.65)", textTransform:"uppercase", fontWeight:700, marginBottom:10 };
+  const lockBadge = { fontSize:"0.62rem", color:"rgba(231,76,60,0.85)", fontWeight:700, marginTop:4 };
+
+  // Horizontal scroll strip wrapper
+  const strip = { display:"flex", gap:10, overflowX:"auto", paddingBottom:4, WebkitOverflowScrolling:"touch" };
+
+  const startGame = () => {
+    // Build the cfg the game expects. Cosmetic ids ride along under `qp`.
+    const denoms = [1,5,10,25,50,100,500].filter(d => d <= sel.buyIn);
+    onStart({
+      nH: 1,
+      nB: sel.botCount,
+      chips: sel.buyIn,
+      ante: sel.ante,
+      replenishAmount: sel.replenishAmount,
+      denoms,
+      names: [displayName || "Player"],
+      botNames: shuffleBotNames(),
+      orientation: "portrait",
+      hintsDefault: true,
+      qp: {
+        tableThemeId: sel.tableThemeId,
+        chipSetId: sel.chipSetId,
+        cardBackId: sel.cardBackId,
+        avatarId: sel.avatarId,
+      },
+    });
+  };
 
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)" }}>
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:`calc(env(safe-area-inset-top) + 40px) 22px calc(100px + env(safe-area-inset-bottom))` }}>
-        {/* Logo */}
-        <div style={{ textAlign:"center", marginBottom:36 }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:"clamp(3.5rem,14vw,5.5rem)", color:"#D4A843", textShadow:"0 0 50px rgba(212,168,67,0.4),0 4px 0 rgba(0,0,0,0.5)", lineHeight:1, letterSpacing:"0.04em" }}>DOINK</div>
-          <div style={{ height:2, background:"linear-gradient(90deg,transparent,#D4A843,transparent)", margin:"14px auto 8px", width:160 }} />
-          <div style={{ fontSize:"0.78rem", color:"rgba(212,168,67,0.5)", letterSpacing:"0.2em", fontWeight:600, textTransform:"uppercase" }}>A Card Game of Pure Chaos</div>
-        </div>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:`calc(env(safe-area-inset-top) + 18px) 16px calc(150px + env(safe-area-inset-bottom))` }}>
+        <div style={{ width:"100%", maxWidth:440 }}>
 
-        <div style={{ width:"100%", maxWidth:420, display:"flex", flexDirection:"column", gap:14 }}>
-          <div style={{ fontSize:"0.62rem", letterSpacing:"0.22em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase", textAlign:"center", marginBottom:-2 }}>Quick Setup</div>
-          <div style={card}>
-            <div style={lbl}>Your Name</div>
-            <input value={name} placeholder="Player" onChange={e => setName(e.target.value)} style={{...inp, marginTop:8}}/>
-          </div>
-          <div style={card}>
-            <div style={lbl}>Bot Opponents</div>
-            <div style={{fontSize:"0.72rem",color:"rgba(245,237,216,0.32)",marginTop:2,fontWeight:400}}>Pick how crowded the table feels</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
-              {[1,2,3,4,5,6,7].map(n => (<button key={n} onClick={() => setNB(n)} style={pill(nB===n)} aria-pressed={nB===n}>{n}</button>))}
-            </div>
-          </div>
-          <div style={card}>
-            <div style={lbl}>Starting Stack</div>
-            <div style={{fontSize:"0.72rem",color:"rgba(245,237,216,0.32)",marginTop:2,fontWeight:400}}>How many chips each player begins with</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
-              {[25,50,100,200,500].map(n => (<button key={n} onClick={() => setChips(n)} style={pill(chips===n)} aria-pressed={chips===n}>${n}</button>))}
-            </div>
+          {/* Header */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+            {onBack ? <button onClick={onBack} style={{ ...sBtn, padding:"8px 14px", fontSize:"0.85rem" }}>← Back</button> : <div style={{width:60}}/>}
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#D4A843", fontWeight:700, letterSpacing:"0.04em" }}>Quick Play</div>
+            <div style={{ fontSize:"0.7rem", color:"rgba(212,168,67,0.6)", fontWeight:700, width:60, textAlign:"right" }}>Lvl {lvl}</div>
           </div>
 
-          {/* Advanced collapsible */}
-          <button onClick={() => setShowAdv(s => !s)} style={{ background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:14, padding:"12px 18px", color:"rgba(245,237,216,0.6)", fontSize:"0.85rem", fontWeight:600, display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-            <span>Advanced Options</span>
-            <span style={{ fontSize:"0.7rem", color:"rgba(212,168,67,0.55)" }}>{showAdv ? "▲ Hide" : "▼ Show"}</span>
+          {/* Presets */}
+          <div style={{ ...sectionLabel }}>Presets</div>
+          <div style={{ ...strip, marginBottom:18 }}>
+            {QP_PRESETS.map(p => {
+              const unlocked = isUnlocked(p, lvl);
+              return (
+                <button key={p.id} onClick={() => applyPreset(p)} disabled={!unlocked} style={{
+                  flexShrink:0, minWidth:104, padding:"12px 14px", borderRadius:14, cursor:unlocked?"pointer":"default",
+                  background: unlocked ? "rgba(212,168,67,0.1)" : "rgba(255,255,255,0.025)",
+                  border: unlocked ? "1.5px solid rgba(212,168,67,0.4)" : "1px solid rgba(255,255,255,0.07)",
+                  opacity: unlocked ? 1 : 0.55, textAlign:"center",
+                }}>
+                  <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"0.92rem", color:unlocked?"#F0C96A":"rgba(245,237,216,0.5)", fontWeight:700 }}>{p.name}</div>
+                  {unlocked
+                    ? <div style={{ fontSize:"0.62rem", color:"rgba(245,237,216,0.45)", marginTop:3 }}>{p.bots} bots · ${p.buyIn}</div>
+                    : <div style={lockBadge}>🔒 Level {p.unlockLevel}</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Randomize */}
+          <button onClick={randomize} style={{ ...sBtn, width:"100%", marginBottom:18, fontSize:"0.9rem", padding:"12px" }}>
+            🎲 Randomize Unlocked Setup
           </button>
-          {showAdv && (
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div style={card}>
-                <div style={lbl}>Orientation</div>
-                <div style={{display:"flex",gap:8,marginTop:8}}>
-                  <button onClick={() => setOrientation("portrait")} style={pill(orientation==="portrait")}>Portrait</button>
-                  <button onClick={() => setOrientation("landscape")} style={pill(orientation==="landscape")}>Landscape</button>
-                </div>
-              </div>
-              <div style={card}>
-                <div style={lbl}>Probability Hints</div>
-                <div style={{fontSize:"0.78rem",color:"rgba(245,237,216,0.3)",marginTop:3,fontWeight:400}}>Shows hit/doink/miss % during your turn</div>
-                <div style={{display:"flex",gap:8,marginTop:8}}>
-                  <button onClick={() => setHintsDefault(true)} style={pill(hintsDefault)}>On</button>
-                  <button onClick={() => setHintsDefault(false)} style={pill(!hintsDefault)}>Off</button>
-                </div>
-              </div>
-              <div style={card}>
-                <div style={lbl}>Replenish Amount</div>
-                <div style={{fontSize:"0.78rem",color:"rgba(245,237,216,0.3)",marginTop:3,fontWeight:400}}>Paid when the pot hits $0</div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
-                  {[1,2,5,10].map(n => (<button key={n} onClick={() => setReplenish(n)} style={pill(replenish===n)}>${n}</button>))}
-                </div>
-              </div>
-              <div style={card}>
-                <div style={lbl}>Chip Denominations</div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
-                  {[1,2,5,10,25,50,100,500].map(d => (<button key={d} onClick={() => toggleD(d)} style={pill(denoms.includes(d))}>${d}</button>))}
-                </div>
-              </div>
-            </div>
-          )}
 
-          <button disabled={!valid} onClick={() => {
-            const resolvedNames = [name || "Player"];
-            const botNames = shuffleBotNames();
-            onStart({nH, nB, chips, ante: replenish, denoms, names: resolvedNames, botNames, orientation, hintsDefault});
-          }} style={{ padding:"18px", borderRadius:16, border:"none", background:valid?"linear-gradient(145deg,#8A6010,#D4A843,#F0C96A,#D4A843)":"rgba(255,255,255,0.07)", color:valid?"#1A0E00":"rgba(255,255,255,0.2)", fontSize:"1.1rem", fontWeight:700, letterSpacing:"0.08em", boxShadow:valid?"0 6px 28px rgba(212,168,67,0.35),inset 0 1px 0 rgba(255,255,255,0.25)":"none", textTransform:"uppercase", marginTop:6 }}>
-            Deal 'Em In
-          </button>
-          <button onClick={onShowTutorial} style={{ ...sBtn, fontSize:"0.9rem", marginTop:-4 }}>
+          {/* Table Theme */}
+          <div style={sectionLabel}>Table Theme</div>
+          <div style={{ ...strip, marginBottom:18 }}>
+            {TABLE_THEMES.map(t => {
+              const unlocked = isUnlocked(t, lvl);
+              const on = sel.tableThemeId === t.id;
+              return (
+                <button key={t.id} onClick={() => unlocked && set({ tableThemeId: t.id })} disabled={!unlocked} style={{
+                  flexShrink:0, width:120, padding:8, borderRadius:14, cursor:unlocked?"pointer":"default",
+                  background:"rgba(0,0,0,0.3)",
+                  border: on ? "2px solid #F0C96A" : "1.5px solid rgba(255,255,255,0.1)",
+                  opacity: unlocked ? 1 : 0.5,
+                }}>
+                  {/* mini felt preview */}
+                  <div style={{ height:54, borderRadius:9, background:`radial-gradient(ellipse at 50% 35%, ${t.felt}, ${t.feltDark})`, border:`2px solid ${t.rail}`, marginBottom:6 }}/>
+                  <div style={{ fontSize:"0.72rem", color:unlocked?"#F5EDD8":"rgba(245,237,216,0.5)", fontWeight:600 }}>{t.name}</div>
+                  {!unlocked && <div style={lockBadge}>🔒 Level {t.unlockLevel}</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Card Back */}
+          <div style={sectionLabel}>Card Back</div>
+          <div style={{ ...strip, marginBottom:18 }}>
+            {CARD_BACKS.map(cb => {
+              const unlocked = isUnlocked(cb, lvl);
+              const on = sel.cardBackId === cb.id;
+              return (
+                <button key={cb.id} onClick={() => unlocked && set({ cardBackId: cb.id })} disabled={!unlocked} style={{
+                  flexShrink:0, width:104, padding:8, borderRadius:14, cursor:unlocked?"pointer":"default",
+                  background:"rgba(0,0,0,0.3)",
+                  border: on ? "2px solid #F0C96A" : "1.5px solid rgba(255,255,255,0.1)",
+                  opacity: unlocked ? 1 : 0.5,
+                }}>
+                  <div style={{ height:64, borderRadius:8, background:cb.back, border:`2px solid ${cb.border}`, marginBottom:6, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    <div style={{ width:"54%", height:"66%", borderRadius:4, border:`1.5px solid ${cb.motif}`, opacity:0.7, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <span style={{ color:cb.motif, fontSize:"0.85rem", fontWeight:800 }}>◆</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize:"0.7rem", color:unlocked?"#F5EDD8":"rgba(245,237,216,0.5)", fontWeight:600 }}>{cb.name}</div>
+                  {!unlocked && <div style={lockBadge}>🔒 Level {cb.unlockLevel}</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Chip Set */}
+          <div style={sectionLabel}>Chip Set</div>
+          <div style={{ ...strip, marginBottom:18 }}>
+            {CHIP_SETS.map(cs => {
+              const unlocked = isUnlocked(cs, lvl);
+              const on = sel.chipSetId === cs.id;
+              return (
+                <button key={cs.id} onClick={() => unlocked && set({ chipSetId: cs.id })} disabled={!unlocked} style={{
+                  flexShrink:0, width:108, padding:8, borderRadius:14, cursor:unlocked?"pointer":"default",
+                  background:"rgba(0,0,0,0.3)",
+                  border: on ? "2px solid #F0C96A" : "1.5px solid rgba(255,255,255,0.1)",
+                  opacity: unlocked ? 1 : 0.5,
+                }}>
+                  <div style={{ height:54, display:"flex", alignItems:"center", justifyContent:"center", gap:-6, marginBottom:6 }}>
+                    {cs.swatch.map((c, i) => (
+                      <div key={i} style={{ width:30, height:30, borderRadius:"50%", background:c,
+                        border:"2px dashed rgba(255,255,255,0.55)", marginLeft:i?-8:0,
+                        boxShadow:"0 2px 6px rgba(0,0,0,0.6)" }}/>
+                    ))}
+                  </div>
+                  <div style={{ fontSize:"0.7rem", color:unlocked?"#F5EDD8":"rgba(245,237,216,0.5)", fontWeight:600 }}>{cs.name}</div>
+                  {!unlocked && <div style={lockBadge}>🔒 Level {cs.unlockLevel}</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Avatar */}
+          <div style={sectionLabel}>Avatar</div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:18 }}>
+            {QP_AVATARS.map(av => {
+              const unlocked = isUnlocked(av, lvl);
+              const on = sel.avatarId === av.id;
+              return (
+                <button key={av.id} onClick={() => unlocked && set({ avatarId: av.id })} disabled={!unlocked} style={{
+                  padding:"10px 6px", borderRadius:14, cursor:unlocked?"pointer":"default",
+                  background:"rgba(0,0,0,0.3)",
+                  border: on ? "2px solid #F0C96A" : "1.5px solid rgba(255,255,255,0.1)",
+                  opacity: unlocked ? 1 : 0.5,
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:5,
+                }}>
+                  <Avatar seed={av.seed} size={46} active={on} name={av.name} isHuman={on}/>
+                  <div style={{ fontSize:"0.64rem", color:unlocked?"#F5EDD8":"rgba(245,237,216,0.5)", fontWeight:600, textAlign:"center", lineHeight:1.2 }}>{av.name}</div>
+                  {!unlocked && <div style={{ ...lockBadge, marginTop:0 }}>🔒 Lvl {av.unlockLevel}</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Game Settings */}
+          <div style={sectionLabel}>Game Settings</div>
+          <div style={{ ...card, marginBottom:14, display:"flex", flexDirection:"column", gap:14 }}>
+            <SettingRow label="Bots" options={BOT_COUNT_OPTIONS} value={sel.botCount} lvl={lvl} fmt={v=>v} onPick={v=>set({botCount:v})}/>
+            <SettingRow label="Buy-In" options={BUYIN_OPTIONS} value={sel.buyIn} lvl={lvl} fmt={v=>`$${v}`} onPick={v=>set({buyIn:v})}/>
+            <SettingRow label="Ante" options={ANTE_OPTIONS} value={sel.ante} lvl={lvl} fmt={v=>`$${v}`} onPick={v=>set({ante:v})}/>
+            <SettingRow label="Replenish" options={REPLENISH_OPTIONS} value={sel.replenishAmount} lvl={lvl} fmt={v=>`$${v}`} onPick={v=>set({replenishAmount:v})}/>
+          </div>
+
+          <button onClick={onShowTutorial} style={{ ...sBtn, width:"100%", fontSize:"0.86rem", padding:"11px" }}>
             📖 View Tutorial
           </button>
-          {onBack && (
-            <button onClick={onBack} style={{ ...sBtn, fontSize:"0.85rem", marginTop:-2, opacity:0.7 }}>
-              ← Back
-            </button>
-          )}
         </div>
+      </div>
+
+      {/* Fixed bottom bar — summary + Start */}
+      <div style={{
+        position:"fixed", left:0, right:0, bottom:0, zIndex:40,
+        padding:`12px 16px calc(14px + env(safe-area-inset-bottom))`,
+        background:"linear-gradient(180deg, rgba(8,15,10,0.6), rgba(8,15,10,0.98) 40%)",
+        backdropFilter:"blur(12px)", borderTop:"1px solid rgba(212,168,67,0.2)",
+      }}>
+        <div style={{ maxWidth:440, margin:"0 auto" }}>
+          <div style={{ fontSize:"0.66rem", color:"rgba(245,237,216,0.5)", textAlign:"center", marginBottom:8, lineHeight:1.5 }}>
+            {theme.name} · {cardBack.name} · {chipSet.name}<br/>
+            {sel.botCount} Bots · ${sel.buyIn} Buy-In · ${sel.ante} Ante · ${sel.replenishAmount} Replenish
+          </div>
+          <button onClick={startGame} style={{ ...gBtn, width:"100%", padding:"16px", fontSize:"1.02rem", textTransform:"uppercase", letterSpacing:"0.06em" }}>
+            Start — ${sel.buyIn} Buy-In · {sel.botCount} Bots
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A single settings row — label + horizontally-scrolling value pills.
+function SettingRow({ label, options, value, lvl, fmt, onPick }) {
+  return (
+    <div>
+      <div style={{ fontSize:"0.74rem", color:"rgba(212,168,67,0.75)", fontWeight:600, marginBottom:7 }}>{label}</div>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+        {options.map(opt => {
+          const unlocked = isUnlocked(opt, lvl);
+          const on = value === opt.value;
+          return (
+            <button key={opt.value} onClick={() => unlocked && onPick(opt.value)} disabled={!unlocked} style={{
+              padding:"9px 14px", borderRadius:11, cursor:unlocked?"pointer":"default",
+              fontSize:"0.82rem", fontWeight:700,
+              background: on ? "rgba(212,168,67,0.2)" : "rgba(255,255,255,0.04)",
+              border: on ? "1.5px solid #F0C96A" : "1px solid rgba(255,255,255,0.1)",
+              color: !unlocked ? "rgba(245,237,216,0.3)" : on ? "#F0C96A" : "rgba(245,237,216,0.6)",
+              opacity: unlocked ? 1 : 0.6,
+              display:"flex", flexDirection:"column", alignItems:"center", gap:2,
+            }}>
+              <span>{fmt(opt.value)}</span>
+              {!unlocked && <span style={{ fontSize:"0.56rem", color:"rgba(231,76,60,0.8)", fontWeight:700 }}>🔒 Lvl {opt.unlockLevel}</span>}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -1536,6 +1896,20 @@ function Game({ cfg, onExit, onCareerComplete }) {
   const { nH, nB, chips: startChips, ante: anteAmt, denoms, names, botNames, orientation, hintsDefault = true } = cfg;
   const landscape = orientation === "landscape";
   const isCareer = cfg.mode === "career";
+  // Quick Play replenish amount (separate from ante). Career & legacy configs
+  // fall back to the ante, preserving prior behavior exactly.
+  const replenishAmt = cfg.replenishAmount || anteAmt;
+  // Quick Play cosmetics — undefined for career; the table reads theme from here.
+  const qpTheme = cfg.qp ? themeById(cfg.qp.tableThemeId) : null;
+  // Quick Play card back / chip set / avatar — null/default for Career.
+  const qpCardBack = cfg.qp ? cardBackById(cfg.qp.cardBackId) : null;
+  const qpChipSet = cfg.qp ? chipSetById(cfg.qp.chipSetId) : null;
+  const qpAvatarSeed = cfg.qp && cfg.qp.avatarId ? avatarById(cfg.qp.avatarId).seed : null;
+  // Publish the active cosmetics so Card / chip components read the right
+  // styling. Set synchronously here (module variable, not state) so it's in
+  // place before any child renders this pass; cleared on unmount.
+  setActiveCosmetics(qpCardBack, qpChipSet);
+  useEffect(() => () => setActiveCosmetics(null, null), []);
   const { draw, drawFresh, reshuffle } = useDeck();
 
   // ── CAREER SESSION TRACKING ──
@@ -1571,7 +1945,8 @@ function Game({ cfg, onExit, onCareerComplete }) {
 
   const [players, setPlayers] = useState(() => {
     const all = [];
-    for (let i = 0; i < nH; i++) all.push(mkPlayer(i, names[i], false, i));
+    // Human(s): in Quick Play use the chosen avatar's seed; Career uses index.
+    for (let i = 0; i < nH; i++) all.push(mkPlayer(i, names[i], false, qpAvatarSeed != null ? qpAvatarSeed : i));
     for (let i = 0; i < nB; i++) all.push(mkPlayer(nH + i, botNames[i] || `Bot ${i + 1}`, true, nH + i));
     return all;
   });
@@ -1673,12 +2048,12 @@ function Game({ cfg, onExit, onCareerComplete }) {
 
   const doReplenish = ps => {
     let p = 0;
-    const up = (ps || playersRef.current).map(pl => { const pay = Math.min(anteAmt, pl.chips); p += pay; return { ...pl, chips: pl.chips - pay }; });
+    const up = (ps || playersRef.current).map(pl => { const pay = Math.min(replenishAmt, pl.chips); p += pay; return { ...pl, chips: pl.chips - pay }; });
     setPlayers(up);
     setPot(p);
     potRef.current = p;
     flashPot(p);
-    addLog(`💰 Pot hit $0 — everyone replenishes $${anteAmt}!`);
+    addLog(`💰 Pot hit $0 — everyone replenishes $${replenishAmt}!`);
   };
 
   const applyPotChange = (d, ps) => {
@@ -1717,6 +2092,9 @@ function Game({ cfg, onExit, onCareerComplete }) {
   }, [phase]);
 
   // ── BLIND BET
+  // Bots decide their blind bets, then: if there's a human at the table we
+  // STOP and let the human's blind-bet panel drive the transition to dealing
+  // (Blind Bet or Skip). With no human, we auto-advance after the bots act.
   useEffect(() => {
     if (phase !== "blindBet") return;
     const bots = players.filter(p => p.isBot);
@@ -1732,7 +2110,12 @@ function Game({ cfg, onExit, onCareerComplete }) {
       }, delay);
       delay += 60;
     });
-    setTimeout(() => startDealing(), delay + 120);
+    // Only auto-advance if no human can act (no human, or human is broke —
+    // the human panel is gated on chips > 0, so without this it would hang).
+    const humanCanAct = players.some(p => !p.isBot && p.chips > 0);
+    if (!humanCanAct) {
+      setTimeout(() => startDealing(), delay + 120);
+    }
   }, [phase]);
 
   // ── DEAL
@@ -1829,7 +2212,9 @@ function Game({ cfg, onExit, onCareerComplete }) {
     const sameRank = sp === 0;
     const pz = getPersonality(p.name);
 
-    // Win caps so a bot can never bet more than it could win:
+    // Bot win caps — bots bet conservatively within full-odds range so their
+    // EV math holds. (The human may bet wider; any payout is capped to the
+    // pot at resolution, so an oversized bet just wins the whole pot.)
     //   spread 1:1     → max = min(chips, pot)
     //   doink 7:1      → max = min(chips, floor(pot/7))
     //   mythical 12:1  → max = min(chips, floor(pot/12))
@@ -1983,7 +2368,9 @@ function Game({ cfg, onExit, onCareerComplete }) {
         let chipDelta = 0, pd = 0, outcome = "miss";
         if (type === "doink") {
           if (isDoinkCard(a, b, hitCard)) {
-            const winnings = amount * 7;
+            // Doink pays 7×, but never more than the pot can cover. If the
+            // pot is short, the player simply takes the whole pot.
+            const winnings = Math.min(amount * 7, Math.max(0, potRef.current));
             chipDelta = amount + winnings;
             pd = -winnings;
             outcome = "win";
@@ -1996,7 +2383,8 @@ function Game({ cfg, onExit, onCareerComplete }) {
           }
         } else if (type === "mythical") {
           if (isMythical(a, b) && between(a, b, hitCard)) {
-            const winnings = amount * 12;
+            // Mythical pays 12×, capped to the pot.
+            const winnings = Math.min(amount * 12, Math.max(0, potRef.current));
             chipDelta = amount + winnings;
             pd = -winnings;
             outcome = "win";
@@ -2361,9 +2749,13 @@ function Game({ cfg, onExit, onCareerComplete }) {
   };
   const humanBlindBet = () => {
     if (betVal <= 0) return;
-    addLog(`${curPlayer.name} blind bets $${betVal}!`);
-    setPlayers(prev => prev.map(p => p.id === curPlayer.id ? { ...p, chips: p.chips - betVal } : p));
+    const h = playersRef.current.find(p => !p.isBot);
+    if (!h) return;
+    addLog(`${h.name} blind bets $${betVal}!`);
+    setPlayers(prev => prev.map(p => p.id === h.id ? { ...p, chips: p.chips - betVal, bet: betVal, betType: "blind" } : p));
     setBetVal(0); setSheet(null);
+    // The human has acted — proceed to dealing.
+    setTimeout(() => startDealing(), 150);
   };
   const buyInsurance = () => {
     const premium = Math.max(1, Math.ceil(maxBet * 0.09));
@@ -2458,7 +2850,16 @@ function Game({ cfg, onExit, onCareerComplete }) {
         <div style={{ display:"flex", gap:6, flexDirection:landscape?"column":"row", alignItems:"center", flexShrink:0 }}>
           {!isCareer && <button onClick={() => setHintsOn(h => !h)} aria-pressed={hintsOn} style={{ padding:"5px 10px", borderRadius:8, fontSize:"0.7rem", fontWeight:600, background:hintsOn?"rgba(212,168,67,0.18)":"rgba(255,255,255,0.05)", border:hintsOn?"1px solid rgba(212,168,67,0.4)":"1px solid rgba(255,255,255,0.1)", color:hintsOn?"#D4A843":"rgba(245,237,216,0.35)", cursor:"pointer" }}>Hints {hintsOn?"ON":"OFF"}</button>}
           <button onClick={() => setShowRules(true)} style={{ padding:"5px 10px", borderRadius:8, fontSize:"0.7rem", fontWeight:600, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(245,237,216,0.45)", cursor:"pointer" }}>Rules</button>
-          <button onClick={onExit} style={{ padding:"5px 10px", borderRadius:8, fontSize:"0.7rem", fontWeight:600, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(245,237,216,0.45)", cursor:"pointer" }}>Exit</button>
+          <button onClick={() => {
+            // In career mode, exiting mid-round would forfeit chips on the
+            // table. Only allow exit at a safe point (round summary / game
+            // over); otherwise tell the player to finish the round.
+            if (isCareer && phase !== "roundEnd" && phase !== "over") {
+              showToast("Finish the round first — then Cash Out to save your chips.");
+              return;
+            }
+            onExit();
+          }} style={{ padding:"5px 10px", borderRadius:8, fontSize:"0.7rem", fontWeight:600, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(245,237,216,0.45)", cursor:"pointer" }}>Exit</button>
         </div>
       </div>
 
@@ -2494,11 +2895,13 @@ function Game({ cfg, onExit, onCareerComplete }) {
                 filter:"blur(38px)", opacity:0.7,
                 transform:"translateY(26px) scale(0.96)",
               }}/>
-              {/* 2. Outer leather rail */}
+              {/* 2. Outer leather rail — tinted by the theme when set */}
               <div aria-hidden="true" style={{
                 position:"absolute", width:railW, height:railH,
                 borderRadius: radius,
-                background:"radial-gradient(ellipse at 50% 32%, #2A1C10 0%, #1A1009 48%, #0C0703 100%)",
+                background: qpTheme
+                  ? `radial-gradient(ellipse at 50% 32%, ${qpTheme.rail} 0%, ${qpTheme.rail} 48%, #0C0703 100%)`
+                  : "radial-gradient(ellipse at 50% 32%, #2A1C10 0%, #1A1009 48%, #0C0703 100%)",
                 boxShadow:"0 28px 80px rgba(0,0,0,0.9), inset 0 3px 8px rgba(120,86,46,0.35), inset 0 -10px 30px rgba(0,0,0,0.85)",
               }}/>
               {/* 3. Rail top sheen — padded leather catches light up top */}
@@ -2527,22 +2930,24 @@ function Game({ cfg, onExit, onCareerComplete }) {
                 boxShadow:"0 0 18px rgba(212,168,67,0.35), inset 0 1px 2px rgba(255,240,200,0.5)",
                 padding:6,
               }}/>
-              {/* 5. Felt */}
+              {/* 5. Felt — colored by the selected Quick Play theme (if any) */}
               <div style={{
                 position:"absolute",
                 width:landscape?"calc(min(64vh,520px) - 70px)":"calc(min(86vw,440px) - 70px)",
                 height:landscape?"calc(min(82vh,420px) - 70px)":"calc(min(116vw,560px) - 70px)",
                 borderRadius: radius,
-                background:"radial-gradient(ellipse at 50% 38%, #2A8C46 0%, #176A30 42%, #0C4A1F 72%, #052C10 100%)",
+                background: qpTheme
+                  ? `radial-gradient(ellipse at 50% 38%, ${qpTheme.felt} 0%, ${qpTheme.felt} 30%, ${qpTheme.feltDark} 78%, ${qpTheme.feltDark} 100%)`
+                  : "radial-gradient(ellipse at 50% 38%, #2A8C46 0%, #176A30 42%, #0C4A1F 72%, #052C10 100%)",
                 boxShadow:"inset 0 8px 40px rgba(0,0,0,0.62), inset 0 0 90px rgba(0,0,0,0.42), inset 0 -6px 20px rgba(0,0,0,0.5)",
                 overflow:"hidden",
               }}>
                 {/* Fine felt weave texture */}
                 <div style={{ position:"absolute", inset:0, opacity:0.04, backgroundImage:"repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 1px,transparent 4px),repeating-linear-gradient(-45deg,#fff 0,#fff 1px,transparent 1px,transparent 4px)" }}/>
-                {/* Soft center light pool */}
-                <div style={{ position:"absolute", top:"34%", left:"50%", transform:"translate(-50%,-50%)", width:"70%", height:"42%", background:"radial-gradient(ellipse, rgba(120,220,150,0.18) 0%, transparent 70%)", pointerEvents:"none" }}/>
-                {/* DOINK watermark */}
-                <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:landscape?"3.6rem":"4rem", color:"rgba(240,201,106,0.08)", letterSpacing:"0.06em", textShadow:"0 2px 0 rgba(0,0,0,0.2)", pointerEvents:"none", whiteSpace:"nowrap" }}>DOINK</div>
+                {/* Soft center light pool — neutral warm when a theme is set */}
+                <div style={{ position:"absolute", top:"34%", left:"50%", transform:"translate(-50%,-50%)", width:"70%", height:"42%", background: qpTheme ? "radial-gradient(ellipse, rgba(255,240,210,0.10) 0%, transparent 70%)" : "radial-gradient(ellipse, rgba(120,220,150,0.18) 0%, transparent 70%)", pointerEvents:"none" }}/>
+                {/* DOINK watermark — sits above the pot so it stays visible */}
+                <div style={{ position:"absolute", top:"26%", left:"50%", transform:"translate(-50%,-50%)", fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:landscape?"2.6rem":"3rem", color:"rgba(240,201,106,0.16)", letterSpacing:"0.08em", textShadow:"0 2px 0 rgba(0,0,0,0.2)", pointerEvents:"none", whiteSpace:"nowrap" }}>DOINK</div>
                 {/* Payout key — curved across the upper felt */}
                 <div style={{ position:"absolute", top:"11%", left:"50%", transform:"translateX(-50%)", display:"flex", gap:landscape?20:14, alignItems:"center", pointerEvents:"none", opacity:0.7 }}>
                   {[{label:"SPREAD",pay:"1:1",color:"rgba(245,237,216,0.9)"},{label:"BLIND",pay:"2:1",color:"#F0C96A"},{label:"DOINK",pay:"7:1",color:"#E74C3C"},{label:"MYTHICAL",pay:"12:1",color:"#C39BD3"}].map(({label,pay,color})=>(
@@ -2857,15 +3262,15 @@ function Game({ cfg, onExit, onCareerComplete }) {
       )}
 
       {/* ── BLIND BET PANEL ── */}
-      {phase==="blindBet" && curPlayer && !curPlayer.isBot && !sheet && (
+      {phase==="blindBet" && humanPlayer && humanPlayer.chips > 0 && !sheet && (
         <div className="pop" style={{ flexShrink:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:28, background:"linear-gradient(0deg,rgba(3,6,4,0.99),rgba(3,6,4,0.88))", borderTop:"1px solid rgba(212,168,67,0.15)" }}>
           <div style={{ textAlign:"center", marginBottom:12 }}>
-            <span style={{ fontSize:"1rem", fontWeight:700, color:"#D4A843" }}>{curPlayer.name}</span>
+            <span style={{ fontSize:"1rem", fontWeight:700, color:"#D4A843" }}>{humanPlayer.name}</span>
             <span style={{ fontSize:"0.85rem", color:"rgba(245,237,216,0.45)", marginLeft:8 }}>— blind bet before your cards?</span>
           </div>
           <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
             <button onClick={() => { setBetVal(0); setSheet("blindBet"); }} style={gBtn}>🎰 Blind Bet</button>
-            <button onClick={() => setSheet(null)} style={sBtn}>Skip</button>
+            <button onClick={() => { setSheet(null); startDealing(); }} style={sBtn}>Skip</button>
           </div>
         </div>
       )}
@@ -2887,7 +3292,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
       {/* ═══ SHEETS ═══ */}
       {sheet==="blindBet" && (
         <Sheet title="🎰 Blind Bet" subtitle="Bet before your cards are dealt. A hit pays 2× from the pot." onClose={() => setSheet(null)} landscape={landscape}>
-          <ChipSelector denoms={denoms} max={Math.min(pot, curPlayer?.chips||0)} value={betVal} onChange={setBetVal}/>
+          <ChipSelector denoms={denoms} max={Math.min(pot, humanPlayer?.chips||0)} value={betVal} onChange={setBetVal}/>
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
             <button onClick={humanBlindBet} disabled={betVal===0} style={{ ...gBtn, opacity:betVal===0?0.4:1 }}>Blind Bet ${betVal||""}</button>
             <button onClick={() => setSheet(null)} style={sBtn}>Cancel</button>
@@ -2908,12 +3313,14 @@ function Game({ cfg, onExit, onCareerComplete }) {
         );
       })()}
       {sheet==="doinkBet" && (() => {
-        // Doink pays 7:1; cap so winnings ≤ pot → bet ≤ floor(pot/7).
-        const max = Math.min(curPlayer?.chips || 0, Math.floor(pot / 7));
+        // Doink pays 7×, but winnings are capped to the pot at resolution.
+        // The bet itself is limited only by chips and pot (like a spread bet),
+        // so you can always take a swing even if the pot is small.
+        const max = Math.min(curPlayer?.chips || 0, pot);
         return (
-        <Sheet title="💥 Doink Bet" subtitle={`Bet the hit card MATCHES one of yours. Pays 7× from the pot. Max bet $${max} (can't win more than the pot).`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="💥 Doink Bet" subtitle={`Bet the hit card MATCHES one of yours. Pays 7× — but never more than the pot. Max bet $${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
           {max <= 0
-            ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>Pot too small for a Doink Bet right now. You'd need at least $7 in the pot.</div>
+            ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>The pot is empty — nothing to win right now.</div>
             : <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>}
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
             <button onClick={() => humanBet("doink")} disabled={betVal===0||max<=0} style={{ ...dBtn, opacity:(betVal===0||max<=0)?0.4:1 }}>Doink Bet ${betVal||""}</button>
@@ -2923,12 +3330,13 @@ function Game({ cfg, onExit, onCareerComplete }) {
         );
       })()}
       {sheet==="mythical" && (() => {
-        // Mythical pays 12:1; cap so winnings ≤ pot → bet ≤ floor(pot/12).
-        const max = Math.min(curPlayer?.chips || 0, Math.floor(pot / 12));
+        // Mythical pays 12×, capped to the pot at resolution. Bet limited only
+        // by chips and pot.
+        const max = Math.min(curPlayer?.chips || 0, pot);
         return (
-        <Sheet title="✨ Mythical Split" subtitle={`Your cards are exactly 2 apart. Pays 12×. Max bet $${max} (can't win more than the pot).`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="✨ Mythical Split" subtitle={`Your cards are exactly 2 apart. Pays 12× — but never more than the pot. Max bet $${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
           {max <= 0
-            ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>Pot too small for a Mythical Bet right now. You'd need at least $12 in the pot.</div>
+            ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>The pot is empty — nothing to win right now.</div>
             : <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>}
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
             <button onClick={() => humanBet("mythical")} disabled={betVal===0||max<=0} style={{ ...pBtn, opacity:(betVal===0||max<=0)?0.4:1 }}>Mythical ${betVal||""}</button>
@@ -3115,6 +3523,51 @@ function Tutorial({ onClose }) {
             {isLast ? "Let's Play" : "Next →"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// UNLOCK REWARD POPUP — shown once when a career milestone is hit
+// ─────────────────────────────────────────────────────────
+const UNLOCK_REWARDS = {
+  4:  { title: "Backroom Table Unlocked",  themeName: "Backroom Blue Felt",
+        rewards: ["Backroom Blue felt", "Backroom Matte chips", "Black Label card back", "4-bot games", "$250 buy-in & replenish", "New avatars: Backroom Regular, Sunglasses"] },
+  9:  { title: "Riverboat Room Unlocked",  themeName: "Riverboat Red Felt",
+        rewards: ["Riverboat Red felt", "Riverboat Brass chips", "Riverboat Crest card back", "5-bot games", "$500 buy-in & replenish", "New avatars: Riverboat Gambler, Mustache"] },
+  16: { title: "High Roller Pit Unlocked", themeName: "High Roller Black Felt",
+        rewards: ["High Roller Black felt", "High Roller Premium chips", "High Roller Gold card back", "6-bot games", "$1,000 buy-in & replenish", "New avatars: High Roller, Black Hat"] },
+  25: { title: "Mythic Invitational Unlocked", themeName: "Mythic Purple Felt",
+        rewards: ["Mythic Purple felt", "Mythic Gold chips", "Mythic Crown card back", "7-bot games", "$2,500 buy-in & replenish", "New avatars: Mythic Shark, Gold Suit, Final Boss"] },
+};
+
+function UnlockRewardPopup({ milestone, onClose }) {
+  const data = UNLOCK_REWARDS[milestone];
+  if (!data) return null;
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:320, background:"radial-gradient(ellipse at center, rgba(8,16,10,0.92), rgba(2,5,3,0.98))", backdropFilter:"blur(10px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{
+        width:"100%", maxWidth:380,
+        background:"linear-gradient(165deg, rgba(40,28,8,0.96), rgba(8,12,8,0.98))",
+        border:"1.5px solid rgba(212,168,67,0.55)", borderRadius:24, padding:"28px 24px",
+        boxShadow:"0 24px 80px rgba(0,0,0,0.95), 0 0 60px rgba(212,168,67,0.2)",
+        animation:"popIn .3s cubic-bezier(.16,1,.3,1) both",
+      }}>
+        <div style={{ textAlign:"center", marginBottom:18 }}>
+          <div style={{ fontSize:"2.4rem", marginBottom:6 }}>🔓</div>
+          <div style={{ fontSize:"0.6rem", letterSpacing:"0.24em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase" }}>Level {milestone} Reached</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.5rem", color:"#F0C96A", fontWeight:900, marginTop:4, textShadow:"0 0 24px rgba(212,168,67,0.5)" }}>{data.title}</div>
+        </div>
+        <div style={{ fontSize:"0.66rem", letterSpacing:"0.16em", color:"rgba(212,168,67,0.6)", fontWeight:700, textTransform:"uppercase", marginBottom:10 }}>New Quick Play Options</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:22 }}>
+          {data.rewards.map((r, i) => (
+            <div key={i} style={{ display:"flex", alignItems:"center", gap:9, fontSize:"0.86rem", color:"rgba(245,237,216,0.85)" }}>
+              <span style={{ color:"#D4A843", fontWeight:700 }}>✦</span>{r}
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} style={{ ...gBtn, width:"100%", padding:"14px", fontSize:"1rem" }}>Claim Rewards →</button>
       </div>
     </div>
   );
@@ -3577,6 +4030,20 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
     return () => document.head.removeChild(el);
   }, []);
 
+  // ── Unlock reward popup ──────────────────────────────────
+  // When the career level has crossed a milestone (4/9/16/25) that hasn't
+  // been acknowledged, surface the reward popup. `shownUnlocks` on the career
+  // records which have been seen so it only ever shows once.
+  const pendingUnlock = (() => {
+    if (!career) return null;
+    const shown = career.shownUnlocks || [];
+    const due = milestonesForLevel(career.level).filter(m => !shown.includes(m));
+    return due.length ? due[0] : null;
+  })();
+  const dismissUnlock = (milestone) => {
+    setCareer(c => ({ ...c, shownUnlocks: [...(c.shownUnlocks || []), milestone] }));
+  };
+
   // ── Career flow ─────────────────────────────────────────
   const enterCareer = () => {
     if (!career) setCareer(createDefaultCareer(displayName));
@@ -3604,6 +4071,14 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
       botNames,
       orientation: "portrait",
       hintsDefault: true,
+      // Each career table has its own look — felt, card back and chips get
+      // richer as the tables climb. Reuses the Quick Play cosmetic machinery.
+      qp: {
+        tableThemeId: table.themeId,
+        cardBackId: table.cardBackId,
+        chipSetId: table.chipSetId,
+        avatarId: null,
+      },
     });
     setRoute("careerGame");
   };
@@ -3633,6 +4108,8 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
       onStart={startQuick}
       onShowTutorial={() => setRoute("tutorial")}
       onBack={() => setRoute("home")}
+      careerLevel={career?.level || 1}
+      displayName={displayName}
     />
   );
 
@@ -3641,15 +4118,20 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
   );
 
   if (route === "careerHome" && career) return (
-    <CareerHome
-      career={career}
-      onPlay={() => setRoute("careerTables")}
-      onClaimDaily={handleClaimDaily}
-      onResetCareer={handleResetCareer}
-      onBack={() => setRoute("home")}
-      onLeaderboard={onShowLeaderboard}
-      onProfile={() => setRoute("profile")}
-    />
+    <>
+      <CareerHome
+        career={career}
+        onPlay={() => setRoute("careerTables")}
+        onClaimDaily={handleClaimDaily}
+        onResetCareer={handleResetCareer}
+        onBack={() => setRoute("home")}
+        onLeaderboard={onShowLeaderboard}
+        onProfile={() => setRoute("profile")}
+      />
+      {pendingUnlock && (
+        <UnlockRewardPopup milestone={pendingUnlock} onClose={() => dismissUnlock(pendingUnlock)} />
+      )}
+    </>
   );
 
   if (route === "profile" && career) return (
