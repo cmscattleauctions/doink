@@ -1,4 +1,10 @@
 import { useState, useEffect, useRef, useReducer, useCallback } from "react";
+import { PrivacyPolicy, TermsOfUse, AccountDeletion, SupportPage } from "./LegalPages.jsx";
+import { EVENTS, applyAchievementEvent } from "./achievements.js";
+import { AchievementToasts, AchievementsScreen } from "./AchievementUI.jsx";
+
+// Developer name shown in the in-app About section.
+const DEV_NAME = "High Plains Games";
 
 // ─────────────────────────────────────────────────────────
 // GLOBAL CSS
@@ -41,6 +47,18 @@ body{font-family:'DM Sans',system-ui,sans-serif;color:var(--text-primary);touch-
 @keyframes breathe{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.025)}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes ringExpand{0%{box-shadow:0 0 0 0 currentColor}100%{box-shadow:0 0 0 24px transparent}}
+@keyframes achToast{from{opacity:0;transform:translateX(-50%) translateY(-20px) scale(0.92)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+@keyframes doinkRing{0%{width:60px;height:60px;opacity:0.95}100%{width:560px;height:560px;opacity:0}}
+@keyframes doinkStamp{0%{opacity:0;transform:scale(2.4) rotate(-7deg)}60%{opacity:1}100%{opacity:1;transform:scale(1) rotate(-3deg)}}
+@keyframes mythRise{0%{opacity:0;transform:translateY(20px) scale(0.85)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes mythSplit{0%{transform:translateX(0)}100%{transform:translateX(var(--shift,0))}}
+@keyframes mythShimmer{0%{opacity:0}40%{opacity:1}100%{opacity:0}}
+@keyframes chipFly{0%{left:var(--fromX);top:var(--fromY);transform:scale(0.7);opacity:0}15%{opacity:1;transform:scale(1)}85%{opacity:1;transform:scale(1)}100%{left:var(--toX);top:var(--toY);transform:scale(0.82);opacity:0}}
+@keyframes potBump{0%{transform:translate(-50%,-50%) scale(1)}45%{transform:translate(-50%,-50%) scale(1.12)}100%{transform:translate(-50%,-50%) scale(1)}}
+@keyframes deckRiffleA{0%,100%{transform:translate(0,0) rotate(0deg)}30%{transform:translate(-9px,-3px) rotate(-7deg)}60%{transform:translate(5px,-1px) rotate(4deg)}}
+@keyframes deckRiffleB{0%,100%{transform:translate(0,0) rotate(0deg)}30%{transform:translate(9px,-3px) rotate(7deg)}60%{transform:translate(-5px,-1px) rotate(-4deg)}}
+@keyframes deckDeal{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--deal-dx),var(--deal-dy)) scale(0.9);opacity:0}}
+@keyframes seatTagIn{from{opacity:0;transform:translateY(4px) scale(0.85)}to{opacity:1;transform:translateY(0) scale(1)}}
 
 .deal-anim{animation:dealIn .35s cubic-bezier(.16,1,.3,1) both}
 .hit-anim{animation:hitFlip .45s cubic-bezier(.16,1,.3,1) both}
@@ -145,10 +163,10 @@ const CAREER_TABLES = [
   { id: "riverboat",  name: "Riverboat Room",      subtitle: "The doinks start hurting.",         minBankroll: 1500,  buyIn: 500,  bots: 5, ante: 5,  unlockLevel: 9,
     themeId: "riverboat-red",     cardBackId: "riverboat-crest", chipSetId: "riverboat-brass",
     rivals: ["Michael", "Parker", "Landen", "Emmanuel", "Houston"] },
-  { id: "highroller", name: "High Roller Pit",     subtitle: "One doink can ruin your week.",     minBankroll: 5000,  buyIn: 1000, bots: 6, ante: 10, unlockLevel: 16,
+  { id: "highroller", name: "High Stakes Room",     subtitle: "Big chip stakes. Brutal bots.",     minBankroll: 5000,  buyIn: 1000, bots: 6, ante: 10, unlockLevel: 16,
     themeId: "high-roller-black", cardBackId: "high-roller-gold",chipSetId: "high-roller-premium",
     rivals: ["Dalton", "Jayton", "Landen", "Houston", "Michael", "Rube"] },
-  { id: "mythic",     name: "Mythic Invitational", subtitle: "Big money. Brutal bots.",           minBankroll: 15000, buyIn: 2500, bots: 7, ante: 25, unlockLevel: 25,
+  { id: "mythic",     name: "Mythic Invitational", subtitle: "The biggest chip table. Elite bots.",           minBankroll: 15000, buyIn: 2500, bots: 6, ante: 25, unlockLevel: 25,
     themeId: "mythic-purple",     cardBackId: "mythic-crown",    chipSetId: "mythic-gold",
     rivals: ["Dalton", "Jayton", "Landen", "Houston", "Michael", "Parker", "Emmanuel"] },
 ];
@@ -176,6 +194,13 @@ const createDefaultCareer = (playerName = "Player") => ({
   lastDailyAmount: 0,
   dailyCap: 500,
   achievements: [],
+  // Achievement progress counters, keyed by achievement id. Rides the
+  // existing Firestore career save — no separate cloud setup needed.
+  achievementProgress: {},
+  // Onboarding flags: whether the player has chosen a username and seen the
+  // first-time tutorial. New players go through both before the game.
+  usernameSet: false,
+  tutorialSeen: false,
   // Quick Play unlock milestones (4/9/16/25) the player has already been
   // shown the reward popup for. Prevents the popup repeating.
   shownUnlocks: [],
@@ -192,6 +217,10 @@ const normalizeCareer = (stored, playerName) => {
   if (!Array.isArray(stored.shownUnlocks)) {
     merged.shownUnlocks = [4, 9, 16, 25].filter(m => (merged.level || 1) >= m);
   }
+  // An existing career means the player is already past onboarding — don't
+  // send returning players back through the username picker / tutorial.
+  if (stored.usernameSet === undefined) merged.usernameSet = true;
+  if (stored.tutorialSeen === undefined) merged.tutorialSeen = true;
   return merged;
 };
 
@@ -283,11 +312,20 @@ const computeSessionXP = stats => {
   return xp;
 };
 
-const tableIsPlayable = (table, career) => {
+// A table is UNLOCKED purely by career level — this is permanent. Once you
+// reach the level, the table stays unlocked forever, regardless of how your
+// chip stack rises or falls. (Previously `minBankroll` re-locked tables when
+// a player's bankroll dropped, which was a bug.)
+const tableIsUnlocked = (table, career) => {
   if (!career) return false;
-  if (career.level < table.unlockLevel) return false;
-  if (career.bankroll < table.buyIn) return false;
-  if (career.bankroll < table.minBankroll) return false;
+  return (career.level || 1) >= table.unlockLevel;
+};
+
+// A table is PLAYABLE if it's unlocked AND you can afford the buy-in. The
+// only bankroll requirement to sit down is covering that table's buy-in.
+const tableIsPlayable = (table, career) => {
+  if (!tableIsUnlocked(table, career)) return false;
+  if ((career.bankroll || 0) < table.buyIn) return false;
   return true;
 };
 
@@ -325,7 +363,7 @@ const TABLE_THEMES = [
   { id: "garage-green",      name: "Garage Green",      unlockLevel: 1,  felt: "#14532d", feltDark: "#062015", rail: "#3b2a18", accent: "#d4a843" },
   { id: "backroom-blue",     name: "Backroom Blue",     unlockLevel: 4,  felt: "#12304a", feltDark: "#071827", rail: "#111827", accent: "#d4a843" },
   { id: "riverboat-red",     name: "Riverboat Red",     unlockLevel: 9,  felt: "#5b1118", feltDark: "#25060a", rail: "#3b2414", accent: "#f0c96a" },
-  { id: "high-roller-black", name: "High Roller Black", unlockLevel: 16, felt: "#080808", feltDark: "#020202", rail: "#1f1f1f", accent: "#f0c96a" },
+  { id: "high-roller-black", name: "Elite Black", unlockLevel: 16, felt: "#080808", feltDark: "#020202", rail: "#1f1f1f", accent: "#f0c96a" },
   { id: "mythic-purple",     name: "Mythic Purple",     unlockLevel: 25, felt: "#2d124a", feltDark: "#100719", rail: "#1a1028", accent: "#f0c96a" },
 ];
 
@@ -338,7 +376,7 @@ const CARD_BACKS = [
     back: "linear-gradient(145deg,#1A1A1A,#080808)", border: "#D4A843", motif: "#F0C96A" },
   { id: "riverboat-crest",name: "Riverboat Crest",unlockLevel: 9,
     back: "linear-gradient(145deg,#5B1118,#2A070B)", border: "#F0C96A", motif: "#F4D27A" },
-  { id: "high-roller-gold",name:"High Roller Gold",unlockLevel: 16,
+  { id: "high-roller-gold",name:"Elite Gold",unlockLevel: 16,
     back: "linear-gradient(145deg,#1C1407,#070502)", border: "#F4D27A", motif: "#F0C96A" },
   { id: "mythic-crown",   name: "Mythic Crown",   unlockLevel: 25,
     back: "linear-gradient(145deg,#2D124A,#100719)", border: "#F4D27A", motif: "#C9A8E8" },
@@ -356,7 +394,7 @@ const CHIP_SETS = [
   { id: "riverboat-brass",    name: "Riverboat Brass",    unlockLevel: 9,
     swatch: ["#8C1A1A", "#B8923E", "#E8DCC0"],
     colors: { 1:"#E8DCC0", 2:"#C9B58A", 5:"#8C1A1A", 10:"#6E4A1A", 25:"#4A6E2A", 50:"#6E2A4A", 100:"#B8923E", 500:"#3A2A14" } },
-  { id: "high-roller-premium",name: "High Roller Premium",unlockLevel: 16,
+  { id: "high-roller-premium",name: "Elite Premium",unlockLevel: 16,
     swatch: ["#0A0A0A", "#F0C96A", "#FFFFFF"],
     colors: { 1:"#FFFFFF", 2:"#C8C8C8", 5:"#8A1A1A", 10:"#1A3A6A", 25:"#1A5A2A", 50:"#4A1A6A", 100:"#0A0A0A", 500:"#F0C96A" } },
   { id: "mythic-gold",        name: "Mythic Gold",        unlockLevel: 25,
@@ -373,9 +411,9 @@ const QP_AVATARS = [
   { id: "hoodie",            name: "Hoodie",            unlockLevel: 1,  seed: 2, accent: "#6C7A82" },
   { id: "backroom-regular",  name: "Backroom Regular",  unlockLevel: 4,  seed: 3, accent: "#867E8E" },
   { id: "sunglasses",        name: "Sunglasses",        unlockLevel: 4,  seed: 4, accent: "#8E7C58" },
-  { id: "riverboat-gambler", name: "Riverboat Gambler", unlockLevel: 9,  seed: 5, accent: "#6E7E74" },
+  { id: "riverboat-gambler", name: "Riverboat Captain", unlockLevel: 9,  seed: 5, accent: "#6E7E74" },
   { id: "mustache",          name: "Mustache",          unlockLevel: 9,  seed: 6, accent: "#80848A" },
-  { id: "high-roller",       name: "High Roller",       unlockLevel: 16, seed: 7, accent: "#8C746A" },
+  { id: "high-roller",       name: "The Regular",      unlockLevel: 16, seed: 7, accent: "#8C746A" },
   { id: "black-hat",         name: "Black Hat",         unlockLevel: 16, seed: 2, accent: "#1F1F1F" },
   { id: "mythic-shark",      name: "Mythic Shark",      unlockLevel: 25, seed: 5, accent: "#5B2A8C" },
   { id: "gold-suit",         name: "Gold Suit",         unlockLevel: 25, seed: 7, accent: "#F0C96A" },
@@ -383,7 +421,7 @@ const QP_AVATARS = [
 ];
 
 // ── Numeric game settings (each value gated by level) ───────
-const BOT_COUNT_OPTIONS  = [{ value:3, unlockLevel:1 }, { value:4, unlockLevel:4 }, { value:5, unlockLevel:9 }, { value:6, unlockLevel:16 }, { value:7, unlockLevel:25 }];
+const BOT_COUNT_OPTIONS  = [{ value:3, unlockLevel:1 }, { value:4, unlockLevel:4 }, { value:5, unlockLevel:9 }, { value:6, unlockLevel:16 }];
 const BUYIN_OPTIONS      = [{ value:100, unlockLevel:1 }, { value:250, unlockLevel:4 }, { value:500, unlockLevel:9 }, { value:1000, unlockLevel:16 }, { value:2500, unlockLevel:25 }];
 const ANTE_OPTIONS       = [{ value:1, unlockLevel:1 }, { value:2, unlockLevel:4 }, { value:5, unlockLevel:9 }, { value:10, unlockLevel:16 }, { value:25, unlockLevel:25 }];
 const REPLENISH_OPTIONS  = [{ value:100, unlockLevel:1 }, { value:250, unlockLevel:4 }, { value:500, unlockLevel:9 }, { value:1000, unlockLevel:16 }, { value:2500, unlockLevel:25 }];
@@ -393,7 +431,7 @@ const QP_PRESETS = [
   { id:"casual",     name:"Casual",      unlockLevel:1,  themeId:"garage-green",      chipId:"house-chips",         cardId:"classic-doink",   bots:3, buyIn:100,  ante:1,  replenish:100  },
   { id:"backroom",   name:"Backroom",    unlockLevel:4,  themeId:"backroom-blue",     chipId:"backroom-matte",      cardId:"black-label",     bots:4, buyIn:250,  ante:2,  replenish:250  },
   { id:"riverboat",  name:"Riverboat",   unlockLevel:9,  themeId:"riverboat-red",     chipId:"riverboat-brass",     cardId:"riverboat-crest", bots:5, buyIn:500,  ante:5,  replenish:500  },
-  { id:"highroller", name:"High Roller", unlockLevel:16, themeId:"high-roller-black", chipId:"high-roller-premium", cardId:"high-roller-gold",bots:6, buyIn:1000, ante:10, replenish:1000 },
+  { id:"highroller", name:"Elite", unlockLevel:16, themeId:"high-roller-black", chipId:"high-roller-premium", cardId:"high-roller-gold",bots:6, buyIn:1000, ante:10, replenish:1000 },
   { id:"mythic",     name:"Mythic",      unlockLevel:25, themeId:"mythic-purple",     chipId:"mythic-gold",         cardId:"mythic-crown",    bots:7, buyIn:2500, ante:25, replenish:2500 },
 ];
 
@@ -701,31 +739,39 @@ function newShuffledDeck() {
   return arr;
 }
 
-// Each hand gets fresh, independent odds: drawFresh returns a card from a brand new shuffled deck.
-// Sequential draw is used for the initial dealing pass (one continuous deal from a stable shuffle).
+// ── DECK ────────────────────────────────────────────────────
+// One shuffled 52-card deck per round. Every card — the two cards in each
+// hand AND the hit card — is drawn from this same deck without replacement,
+// so no card can ever appear twice in a round. `reshuffle()` starts a fresh
+// round with a brand-new shuffle.
 function useDeck() {
   const s = useRef({ deck: newShuffledDeck(), idx: 0 });
+  // Draw the next card from the current round's deck (no replacement).
   const draw = useCallback(() => {
     if (s.current.idx >= s.current.deck.length) {
+      // Safety: a 52-card deck can't normally be exhausted in one round,
+      // but if it ever is, reshuffle rather than crash.
       s.current.deck = newShuffledDeck();
       s.current.idx = 0;
     }
     return s.current.deck[s.current.idx++];
   }, []);
+  // Start a new round: fresh shuffled deck, index reset.
   const reshuffle = useCallback(() => {
     s.current.deck = newShuffledDeck();
     s.current.idx = 0;
   }, []);
-  // drawFresh: brand-new full-deck shuffle, return top card. Use for each hit so every hand has equal odds.
-  const drawFresh = useCallback(() => {
-    const d = newShuffledDeck();
-    return d[0];
-  }, []);
-  return { draw, drawFresh, reshuffle };
+  // The hit card is just the next card off the SAME deck — drawn without
+  // replacement so it can never duplicate a card already dealt this round.
+  const drawFresh = useCallback(() => draw(), [draw]);
+  // How many cards remain undealt in the current round's deck. Used so odds
+  // can reflect the real shrinking deck instead of a static 50-card model.
+  const cardsRemaining = useCallback(() => s.current.deck.length - s.current.idx, []);
+  return { draw, drawFresh, reshuffle, cardsRemaining };
 }
 
 // ─────────────────────────────────────────────────────────
-// SHARED STYLES — premium casino aesthetic
+// SHARED STYLES — premium card-table aesthetic
 // ─────────────────────────────────────────────────────────
 const gBtn = { padding:"14px 26px", borderRadius:14, border:"none", background:"linear-gradient(160deg,#8A6418 0%,#D4A843 38%,#F4D27A 62%,#C99536 100%)", color:"#1A0E00", fontFamily:"'DM Sans',sans-serif", fontSize:"1rem", fontWeight:700, letterSpacing:"0.05em", boxShadow:"0 6px 22px rgba(212,168,67,0.42), inset 0 1px 0 rgba(255,240,200,0.55), inset 0 -1px 0 rgba(80,40,0,0.35)", cursor:"pointer", transition:"transform 0.12s ease, box-shadow 0.12s ease" };
 const sBtn = { padding:"14px 22px", borderRadius:14, background:"rgba(255,255,255,0.06)", border:"1.5px solid rgba(255,255,255,0.16)", color:"rgba(245,237,216,0.78)", fontFamily:"'DM Sans',sans-serif", fontSize:"1rem", fontWeight:500, letterSpacing:"0.03em", cursor:"pointer", backdropFilter:"blur(8px)", transition:"background 0.15s ease, border-color 0.15s ease" };
@@ -763,14 +809,15 @@ function handValue(a, b, pot) {
 }
 
 // ─────────────────────────────────────────────────────────
-// FIX #10: calcOdds with comment explaining deck assumption
-// FIX #13: no tiny font on inputs (font sizes kept ≥ 1rem on inputs)
-// ─────────────────────────────────────────────────────────
+// Probability the hit card lands between / matches the player's two cards.
+// Model: from this player's view, 50 cards are unseen (the full deck minus
+// their own 2). The hit card is drawn from the real round deck without
+// replacement, so among the cards this player can't see it's uniformly
+// random — making this 50-card model the correct per-player estimate.
 function calcOdds(a, b) {
   const lo = Math.min(RV[a.rank], RV[b.rank]);
   const hi = Math.max(RV[a.rank], RV[b.rank]);
   const sp = hi - lo;
-  // 52 cards minus your 2 = 50 remaining.
   const total = 50;
   const hits = Math.max(0, (sp - 1) * 4);
   // For doink count: there are 4 cards of each endpoint rank in a full deck,
@@ -791,11 +838,11 @@ function getRecommendation(a, b) {
   const lo = Math.min(RV[a.rank], RV[b.rank]);
   const hi = Math.max(RV[a.rank], RV[b.rank]);
   const sp = hi - lo;
-  // EV per $1 on spread bet ≈ hitProb − doinkProb (since miss = lose bet, doink = lose 2x)
+  // EV per ◆1 on spread bet ≈ hitProb − doinkProb (since miss = lose bet, doink = lose 2x)
   // Actually: EV = hitProb*1 − doinkProb*1 − missProb*0... wait, miss DOES lose the bet.
   // Re-derive: EV = hitProb*(+1) + doinkProb*(-1) + missProb*(-1) = hitProb − 1 + missProb*0... no.
   // Simplest: outcome*1 if hit, -1 if miss, -1 if doink (extra penalty already in -1).
-  // EV per $1 = hitProb − (1 − hitProb) = 2*hitProb − 1.
+  // EV per ◆1 = hitProb − (1 − hitProb) = 2*hitProb − 1.
   // sp 1 → hit 0%, EV = -1
   // sp 4 → hit 24%, EV = -0.52
   // sp 7 → hit 48%, EV = -0.04
@@ -815,8 +862,9 @@ function getRecommendation(a, b) {
 // ─────────────────────────────────────────────────────────
 function getSeatPositions(players, landscape) {
   // Layout policy:
-  //   The human sits at the TOP (head) of the table.
-  //   Bots wrap down the left side, around the bottom, and up the right side.
+  //   The human sits at the BOTTOM of the table (the natural mobile position
+  //   — your hand and controls are under your thumb).
+  //   Bots wrap up the left side, across the top, and down the right side.
   //   The table is a TALL vertical capsule, so the seat ellipse uses a small
   //   horizontal radius and a large vertical radius.
   //
@@ -826,46 +874,54 @@ function getSeatPositions(players, landscape) {
   const humans = players.filter(p => !p.isBot);
   const bots = players.filter(p => p.isBot);
 
-  // The table capsule is ~86vw wide and ~116vw tall (portrait). Seats ride
-  // ON the rail, so the seat ellipse must match the capsule's aspect, not the
-  // container's. These radii are % of the table-area container; they're tuned
-  // so seats sit on the padded rail and every seat stays fully on-screen.
-  const rx = landscape ? 40 : 44;   // wide enough to reach the side rail
-  const ry = landscape ? 40 : 41;   // tall, but kept off the very top/bottom edges
+  // The table capsule is a tall portrait capsule. Seats ride ON the rail, so
+  // the seat ellipse matches the capsule's aspect. These radii are % of the
+  // table-area container, tuned so seats sit on the padded rail and stay
+  // fully on-screen.
+  const rx = landscape ? 40 : 44;
+  const ry = landscape ? 40 : 41;
 
   // Clamp helper — keep every seat within the visible container with margin
   // for the nameplate + cards (which extend above/below the anchor point).
   const clampX = v => Math.max(12, Math.min(88, v));
-  const clampY = v => Math.max(13, Math.min(90, v));
+  // Top seats need a little more headroom (avatar sits above the cards), and
+  // the bottom human seat is pulled up so it clears the controls.
+  const clampY = v => Math.max(15, Math.min(86, v));
 
-  // Human(s) along the top arc
+  // Human(s) along the BOTTOM arc, centered on deg=90 (bottom). Pulled up
+  // slightly (ry * 0.86) so the larger human hand + 3-card zone clears the
+  // bottom controls.
   if (humans.length > 0) {
     const n = humans.length;
     const span = Math.min(80, (n - 1) * 50);
     humans.forEach((p, i) => {
-      const deg = n === 1 ? 270 : (270 - span / 2) + (span / (n - 1)) * i;
+      const deg = n === 1 ? 90 : (90 - span / 2) + (span / (n - 1)) * i;
       const rad = deg * Math.PI / 180;
-      pos[p.id] = { x: clampX(50 + rx * Math.cos(rad)), y: clampY(50 + ry * Math.sin(rad)) };
+      pos[p.id] = {
+        x: clampX(50 + rx * Math.cos(rad)),
+        y: clampY(50 + ry * 0.86 * Math.sin(rad)),
+      };
     });
   }
 
-  // Bots wrap the rest of the capsule. Arc centered on the bottom (deg=90),
-  // widening with bot count so 7 bots ring the table evenly without crowding
-  // the human at the top.
+  // Bots wrap the rest of the capsule. Arc centered on the TOP (deg=270),
+  // widening with bot count so up to 6 bots ring the table evenly without
+  // crowding the human at the bottom.
   if (bots.length > 0) {
     const n = bots.length;
-    //  1→0°  2→100°  3→160°  4→210°  5→240°  6→262°  7→276°
+    //  1→0°  2→100°  3→160°  4→210°  5→240°  6→262°
     const spanByCount = [0, 0, 100, 160, 210, 240, 262, 276, 288];
     const span = spanByCount[Math.min(n, spanByCount.length - 1)];
     bots.forEach((p, i) => {
-      const deg = n === 1 ? 90 : (90 - span / 2) + (span / (n - 1)) * i;
+      const deg = n === 1 ? 270 : (270 - span / 2) + (span / (n - 1)) * i;
       const rad = deg * Math.PI / 180;
       const sinV = Math.sin(rad), cosV = Math.cos(rad);
-      // Pull the bottom-most seats up a touch so they clear the controls.
-      const bottomPull = sinV > 0 ? 1 - sinV * 0.10 : 1;
+      // Pull the top-most seats down a touch so the avatar+cards tuck tight
+      // into the top rail rather than drifting toward the center.
+      const topPull = sinV < 0 ? 1 + sinV * 0.06 : 1;
       pos[p.id] = {
         x: clampX(50 + rx * cosV),
-        y: clampY(50 + ry * sinV * bottomPull),
+        y: clampY(50 + ry * sinV * topPull),
       };
     });
   }
@@ -918,8 +974,22 @@ function Card({ card, faceDown = false, small = false, animClass = "deal-anim", 
     </div>
   );
 }
-function Placeholder({ small, scale = 1 }) {
+function Placeholder({ small, scale = 1, doinkSlot = false }) {
   const W = (small ? 46 : 82) * scale, H = (small ? 64 : 116) * scale;
+  // The doink-card slot reserves the third card position before reveal — it
+  // reads as a faint "?" so the player knows a card lands there.
+  if (doinkSlot) {
+    return (
+      <div style={{
+        width:W, height:H, borderRadius:(small?8:11)*scale,
+        background:"rgba(212,168,67,0.05)",
+        border:"1.5px dashed rgba(212,168,67,0.28)",
+        flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+      }}>
+        <span style={{ color:"rgba(212,168,67,0.4)", fontSize:(small?0.8:1.2)*scale+"rem", fontWeight:800, fontFamily:"'Playfair Display',serif" }}>?</span>
+      </div>
+    );
+  }
   return <div style={{ width:W, height:H, borderRadius: (small?8:11)*scale, background:"rgba(255,255,255,0.03)", border:"1.5px dashed rgba(255,255,255,0.1)", flexShrink:0 }} />;
 }
 
@@ -936,6 +1006,80 @@ function ChipPile({ amount }) {
       {chips.map((d, i) => (
         <div key={i} style={{ width: 13, height: 13, borderRadius: "50%", background: chipColorFor(d), border: "2px dashed rgba(255,255,255,0.35)", boxShadow: "0 2px 4px rgba(0,0,0,0.5)", animation: `chipBob ${0.9 + i * 0.07}s ease-in-out infinite`, animationDelay: `${i * 0.1}s` }} />
       ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// DECK STACK — a visible face-down deck on the felt. Cards appear
+// to deal from here; it riffles during the shuffle phase. Purely
+// visual — the real deck logic lives in useDeck().
+// ─────────────────────────────────────────────────────────
+function DeckStack({ shuffling, landscape }) {
+  const cb = ACTIVE_COSMETICS.cardBack;
+  const backBg = cb ? cb.back : "linear-gradient(145deg,#1C0A02,#0F0601)";
+  const backBorder = cb ? cb.border : "#5A3010";
+  const backMotif = cb ? cb.motif : "#A07030";
+  const W = landscape ? 30 : 34, H = landscape ? 42 : 48;
+  const layers = [0, 1, 2, 3, 4];
+  return (
+    <div aria-hidden="true" style={{ position:"relative", width:W + 8, height:H + 8 }}>
+      {layers.map(i => {
+        const isTop = i === layers.length - 1;
+        return (
+          <div key={i} style={{
+            position:"absolute", left:i * 1.4, top:i * -1.4,
+            width:W, height:H, borderRadius:6,
+            background:backBg, border:`1px solid ${backBorder}`,
+            boxShadow:"0 2px 6px rgba(0,0,0,0.6)",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            animation: shuffling
+              ? `${i % 2 ? "deckRiffleB" : "deckRiffleA"} 0.5s ${i * 0.04}s ease-in-out`
+              : "none",
+          }}>
+            {isTop && (
+              <div style={{ width:"56%", height:"62%", borderRadius:3, border:`1.5px solid ${backMotif}`, opacity:0.7, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <span style={{ color:backMotif, fontSize:"0.7rem", fontWeight:800 }}>◆</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// FLYING CHIPS — a pure visual layer that animates a small cluster
+// of chips from a source point to a destination point. Coordinates
+// are in PERCENT of the table-area container, matching getSeatPositions.
+// This NEVER touches bet/pot state — it is decoration only, driven by
+// a list of flight descriptors the game pushes and clears.
+// ─────────────────────────────────────────────────────────
+function FlyingChips({ flights }) {
+  if (!flights || flights.length === 0) return null;
+  return (
+    <div aria-hidden="true" style={{ position:"absolute", inset:0, pointerEvents:"none", zIndex:18, overflow:"hidden" }}>
+      {flights.map(f => {
+        // 3–5 chips per flight, staggered, each easing along the path.
+        const n = Math.min(5, Math.max(3, Math.round((f.amount || 1) / 10) + 2));
+        return Array.from({ length: n }).map((_, i) => (
+          <div key={`${f.id}-${i}`} style={{
+            position:"absolute",
+            width:14, height:14, marginLeft:-7, marginTop:-7,
+            borderRadius:"50%",
+            background: chipColorFor([100,25,5][i % 3]),
+            border:"2px dashed rgba(255,255,255,0.5)",
+            boxShadow:"0 3px 7px rgba(0,0,0,0.65)",
+            // start/end positions fed to the chipFly keyframe (percent of
+            // the table-area container).
+            ["--fromX"]: `${f.fromX}%`, ["--fromY"]: `${f.fromY}%`,
+            ["--toX"]: `${f.toX}%`,     ["--toY"]: `${f.toY}%`,
+            left:`${f.toX}%`, top:`${f.toY}%`,
+            animation:`chipFly ${f.dur || 520}ms cubic-bezier(.4,.05,.35,1) ${i * 55}ms both`,
+          }}/>
+        ));
+      })}
     </div>
   );
 }
@@ -969,7 +1113,7 @@ function AnimatedNumber({ value, duration = 700, style }) {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [value, duration]);
 
-  return <span style={style}>${display}</span>;
+  return <span style={style}>◆{display}</span>;
 }
 
 function PotDisplay({ pot, potAnim, delta, landscape }) {
@@ -993,7 +1137,7 @@ function PotDisplay({ pot, potAnim, delta, landscape }) {
       </div>
       {delta !== null && delta !== 0 && (
         <div style={{ position:"absolute", top:-36, left:"50%", transform:"translateX(-50%)", fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", fontWeight:800, pointerEvents:"none", color:delta>0?"#E74C3C":"#27AE60", textShadow:delta>0?"0 0 18px rgba(231,76,60,0.95)":"0 0 18px rgba(39,174,96,0.95)", animation:delta>0?"floatDown 1s ease forwards":"floatUp 1s ease forwards", whiteSpace:"nowrap" }}>
-          {delta > 0 ? `+$${delta}` : `-$${Math.abs(delta)}`}
+          {delta > 0 ? `+◆${delta}` : `-◆${Math.abs(delta)}`}
         </div>
       )}
     </div>
@@ -1066,7 +1210,7 @@ function ChipSelector({ denoms, max, value, onChange }) {
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:16, background:"rgba(0,0,0,0.3)", borderRadius:16, padding:"10px 20px", border:"1px solid rgba(255,255,255,0.08)" }}>
         <button onClick={() => onChange(0)} style={{ width:36, height:36, borderRadius:"50%", background:"rgba(231,76,60,0.15)", border:"1.5px solid rgba(231,76,60,0.4)", color:"#E74C3C", fontSize:"1rem", fontWeight:700, display:"flex",alignItems:"center",justifyContent:"center" }}>✕</button>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2rem", color:"#F0C96A", minWidth:80, textAlign:"center", fontWeight:700 }}>${value}</div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2rem", color:"#F0C96A", minWidth:80, textAlign:"center", fontWeight:700 }}>◆{value}</div>
         <button onClick={() => onChange(max)} style={{ padding:"7px 14px", borderRadius:10, fontSize:"0.85rem", fontWeight:600, background:"rgba(212,168,67,0.15)", border:"1.5px solid rgba(212,168,67,0.4)", color:"#D4A843" }}>Max</button>
       </div>
     </div>
@@ -1134,7 +1278,7 @@ function OfferBuilder({ denoms, maxChips, onConfirm, onCancel, label = "Make Off
   const [chips, setChips] = useState(0);
   const [pct, setPct] = useState(0);
   const valid = chips > 0 || pct > 0;
-  const desc = chips > 0 && pct > 0 ? `$${chips} + ${pct}% of winnings` : chips > 0 ? `$${chips} upfront` : pct > 0 ? `${pct}% of winnings` : "";
+  const desc = chips > 0 && pct > 0 ? `◆${chips} + ${pct}% of winnings` : chips > 0 ? `◆${chips} upfront` : pct > 0 ? `${pct}% of winnings` : "";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
@@ -1164,7 +1308,7 @@ function OfferBuilder({ denoms, maxChips, onConfirm, onCancel, label = "Make Off
 // TAP TO REVEAL — bet placed, player taps deck to flip hit card
 // ─────────────────────────────────────────────────────────
 function TapToReveal({ slot, amount, type, onReveal }) {
-  const label = type === "doink" ? "💥 Doink Bet" : type === "mythical" ? "✨ Mythical" : type === "blind" ? "🎰 Blind" : "Spread";
+  const label = type === "doink" ? "💥 Doink Bet" : type === "doubledoink" ? "💥💥 Double Doink" : type === "mythical" ? "✨ Mythical" : type === "blind" ? "🎰 Blind" : "Spread";
   const [a, b] = slot.cards || [];
   return (
     <div style={{ position:"fixed", inset:0, zIndex:240, background:"radial-gradient(ellipse at center,rgba(8,16,10,0.92),rgba(2,5,3,0.98))", backdropFilter:"blur(8px)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24 }}>
@@ -1205,6 +1349,77 @@ function TapToReveal({ slot, amount, type, onReveal }) {
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════
+// GAME ICONS — custom inline-SVG glyphs replacing emoji in major
+// gameplay effects. Renders identically on iOS / Android / web.
+// Usage: <GameIcon name="doink" size={32} color="#E74C3C" />
+// ═══════════════════════════════════════════════════════════
+function GameIcon({ name, size = 24, color = "#F0C96A" }) {
+  const common = { width: size, height: size, viewBox: "0 0 32 32", "aria-hidden": true, fill: "none" };
+  switch (name) {
+    case "doink": // impact burst — concentric ring + radiating shards
+      return (
+        <svg {...common}>
+          <circle cx="16" cy="16" r="7" fill="none" stroke={color} strokeWidth="2.6"/>
+          {[0,45,90,135,180,225,270,315].map(d => (
+            <line key={d} x1="16" y1="16" x2="16" y2="3"
+              stroke={color} strokeWidth="2.2" strokeLinecap="round"
+              transform={`rotate(${d} 16 16)`} opacity="0.92"/>
+          ))}
+          <circle cx="16" cy="16" r="2.6" fill={color}/>
+        </svg>
+      );
+    case "mythical": // split rift — a card divided by a shimmer line
+      return (
+        <svg {...common}>
+          <path d="M9 5 L7 16 L9 27" stroke={color} strokeWidth="2.4" strokeLinecap="round" fill="none"/>
+          <path d="M23 5 L25 16 L23 27" stroke={color} strokeWidth="2.4" strokeLinecap="round" fill="none"/>
+          <line x1="16" y1="3" x2="16" y2="29" stroke={color} strokeWidth="1.8" strokeDasharray="2 2.6"/>
+          <path d="M16 9 l3 7 -3 7 -3 -7 z" fill={color} opacity="0.55"/>
+        </svg>
+      );
+    case "chip": // poker chip with dashed rim
+      return (
+        <svg {...common}>
+          <circle cx="16" cy="16" r="12" fill={color}/>
+          <circle cx="16" cy="16" r="7" fill="none" stroke="#0C0703" strokeWidth="2" strokeDasharray="3 3" opacity="0.55"/>
+        </svg>
+      );
+    case "card": // playing card
+      return (
+        <svg {...common}>
+          <rect x="8" y="5" width="16" height="22" rx="2.6" fill={color}/>
+          <path d="M16 11 l3.4 5 -3.4 5 -3.4 -5 z" fill="#0C0703" opacity="0.55"/>
+        </svg>
+      );
+    case "blind": // eye closed — a lid over an iris
+      return (
+        <svg {...common}>
+          <path d="M5 16 q11 -11 22 0" stroke={color} strokeWidth="2.4" fill="none" strokeLinecap="round"/>
+          <path d="M5 16 q11 11 22 0" stroke={color} strokeWidth="2.4" fill="none" strokeLinecap="round"/>
+          <circle cx="16" cy="16" r="3.4" fill={color}/>
+        </svg>
+      );
+    case "win": // laurel/star
+      return (
+        <svg {...common}>
+          <path d="M16 4 l3.2 7 7.6 .6 -5.8 5 1.8 7.4 -6.8 -4 -6.8 4 1.8 -7.4 -5.8 -5 7.6 -.6 z" fill={color}/>
+        </svg>
+      );
+    case "pot": // stacked chips
+      return (
+        <svg {...common}>
+          <ellipse cx="16" cy="22" rx="11" ry="4" fill={color} opacity="0.5"/>
+          <ellipse cx="16" cy="18" rx="11" ry="4" fill={color} opacity="0.75"/>
+          <ellipse cx="16" cy="14" rx="11" ry="4" fill={color}/>
+        </svg>
+      );
+    default:
+      return <svg {...common}><circle cx="16" cy="16" r="10" fill={color}/></svg>;
+  }
+}
+
 function ReplenishOverlay() {
   return (
     <div role="alert" aria-live="assertive"
@@ -1223,23 +1438,123 @@ function ReplenishOverlay() {
         animation:"breathe 2.4s ease-in-out infinite",
       }}/>
       <div className="pop" style={{ textAlign:"center", position:"relative", padding:"30px 40px" }}>
-        <div style={{ fontSize:"5.2rem", marginBottom:14, filter:"drop-shadow(0 0 24px rgba(212,168,67,0.6))" }}>♻️</div>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(3.2rem,13vw,5rem)", fontWeight:900, color:"#F0C96A", textShadow:"0 0 48px rgba(212,168,67,0.9), 0 0 96px rgba(212,168,67,0.55)", letterSpacing:"0.06em", lineHeight:1 }}>REPLENISH</div>
+        {/* Custom chip-stack icon — chips converging toward a center pot.
+            No emoji; pure SVG so it renders identically on every platform. */}
+        <div aria-hidden="true" style={{ display:"flex", justifyContent:"center", marginBottom:16 }}>
+          <svg width="92" height="92" viewBox="0 0 92 92" style={{ filter:"drop-shadow(0 0 18px rgba(212,168,67,0.6))" }}>
+            {/* arrows from four sides pointing inward */}
+            {[0,90,180,270].map(deg => (
+              <g key={deg} transform={`rotate(${deg} 46 46)`}>
+                <path d="M46 8 L52 20 L40 20 Z" fill="#D4A843" opacity="0.9"/>
+              </g>
+            ))}
+            {/* center pot — stacked chips */}
+            <ellipse cx="46" cy="58" rx="20" ry="7" fill="#0C0703"/>
+            <ellipse cx="46" cy="54" rx="20" ry="7" fill="#5C420F"/>
+            <ellipse cx="46" cy="50" rx="20" ry="7" fill="#8A6418"/>
+            <ellipse cx="46" cy="46" rx="20" ry="7" fill="#D4A843"/>
+            <ellipse cx="46" cy="46" rx="13" ry="4.4" fill="none" stroke="#F4D27A" strokeWidth="1.6"/>
+          </svg>
+        </div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(3rem,12vw,4.6rem)", fontWeight:900, color:"#F0C96A", textShadow:"0 0 48px rgba(212,168,67,0.9), 0 0 96px rgba(212,168,67,0.55)", letterSpacing:"0.05em", lineHeight:1 }}>TABLE REPLENISH</div>
         <div aria-hidden="true" style={{ height:1.5, width:120, margin:"18px auto 16px", background:"linear-gradient(90deg, transparent, rgba(212,168,67,0.7), transparent)" }}/>
-        <div style={{ fontSize:"1.05rem", color:"rgba(245,237,216,0.82)", fontWeight:500, maxWidth:300, margin:"0 auto", lineHeight:1.55 }}>The pot is empty.<br/>Everyone pays in.</div>
+        <div style={{ fontSize:"1.05rem", color:"rgba(245,237,216,0.82)", fontWeight:500, maxWidth:300, margin:"0 auto", lineHeight:1.55 }}>The pot is empty.<br/>Everyone pays back in.</div>
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────
-// DOINK FULL SCREEN — takes over for 1s on doink
+// DOINK ANIMATION — signature branded moment. The word stamps
+// onto the table with an expanding impact ring. No emoji.
 // ─────────────────────────────────────────────────────────
 function DoinkFullScreen({ name }) {
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:285, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", pointerEvents:"none", background:"radial-gradient(ellipse at center,rgba(231,76,60,0.42),rgba(231,76,60,0.08) 70%)", animation:"popIn .25s cubic-bezier(.16,1,.3,1) both" }}>
-      <div className="big-shake" style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(4rem,18vw,8rem)", fontWeight:900, color:"#fff", textShadow:"0 0 30px rgba(231,76,60,1),0 0 80px rgba(231,76,60,0.9),0 8px 0 rgba(0,0,0,0.5)", letterSpacing:"0.04em", lineHeight:1 }}>DOINK!</div>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", color:"#fff", fontWeight:700, marginTop:12, textShadow:"0 0 24px rgba(231,76,60,0.95)" }}>💥 {name} 💥</div>
+    <div style={{ position:"fixed", inset:0, zIndex:285, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", pointerEvents:"none", background:"radial-gradient(ellipse at center,rgba(231,76,60,0.4),rgba(231,76,60,0.06) 70%)", animation:"popIn .2s cubic-bezier(.16,1,.3,1) both" }}>
+      {/* expanding impact ring */}
+      <div aria-hidden="true" style={{
+        position:"absolute", width:60, height:60, borderRadius:"50%",
+        border:"4px solid rgba(231,76,60,0.9)",
+        animation:"doinkRing .6s cubic-bezier(.2,.7,.3,1) forwards",
+      }}/>
+      {/* second, slower ring */}
+      <div aria-hidden="true" style={{
+        position:"absolute", width:60, height:60, borderRadius:"50%",
+        border:"2px solid rgba(240,201,106,0.7)",
+        animation:"doinkRing .85s .08s cubic-bezier(.2,.7,.3,1) forwards",
+      }}/>
+      {/* the stamp */}
+      <div style={{
+        fontFamily:"'Playfair Display',serif", fontSize:"clamp(4rem,18vw,8rem)", fontWeight:900,
+        color:"#fff", letterSpacing:"0.04em", lineHeight:1,
+        textShadow:"0 0 30px rgba(231,76,60,1),0 0 80px rgba(231,76,60,0.9),0 8px 0 rgba(0,0,0,0.55)",
+        animation:"doinkStamp .42s cubic-bezier(.34,1.56,.5,1) both",
+      }}>DOINK</div>
+      <div style={{
+        display:"flex", alignItems:"center", gap:8, marginTop:14,
+        animation:"fadeUp .3s .18s both",
+      }}>
+        <GameIcon name="doink" size={22} color="#fff"/>
+        <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.35rem", color:"#fff", fontWeight:700, textShadow:"0 0 24px rgba(231,76,60,0.95)" }}>{name}</span>
+        <GameIcon name="doink" size={22} color="#fff"/>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// MYTHICAL SPLIT ANIMATION — a card rises, a rift splits it
+// into two mirrored halves with a shimmer. Distinct from DOINK.
+// ─────────────────────────────────────────────────────────
+function MythicalFullScreen({ name }) {
+  const half = (side) => (
+    <div style={{
+      width:54, height:78, overflow:"hidden", position:"relative",
+      animation:`mythSplit .5s .25s cubic-bezier(.3,.8,.4,1) both`,
+      ["--shift"]: side === "L" ? "-20px" : "20px",
+    }}>
+      <div style={{
+        width:108, height:78,
+        position:"absolute", left: side === "L" ? 0 : -54, top:0,
+        borderRadius:9,
+        background:"linear-gradient(160deg,#FFFFFF,#E8DEF6)",
+        border:"2px solid #9B59B6",
+        display:"flex", alignItems:"center", justifyContent:"center",
+      }}>
+        <div style={{ width:96, height:66, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <GameIcon name="mythical" size={40} color="#9B59B6"/>
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:286, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", pointerEvents:"none", background:"radial-gradient(ellipse at center,rgba(155,89,182,0.42),rgba(155,89,182,0.06) 70%)", animation:"popIn .22s cubic-bezier(.16,1,.3,1) both" }}>
+      <div style={{ display:"flex", animation:"mythRise .4s cubic-bezier(.34,1.4,.5,1) both", position:"relative" }}>
+        {half("L")}
+        {/* rift shimmer line down the middle */}
+        <div aria-hidden="true" style={{
+          position:"absolute", left:"50%", top:-8, bottom:-8, width:3,
+          transform:"translateX(-50%)",
+          background:"linear-gradient(180deg,transparent,#F0C96A,#fff,#F0C96A,transparent)",
+          boxShadow:"0 0 16px rgba(240,201,106,0.95)",
+          animation:"mythShimmer 1.1s ease-in-out both",
+        }}/>
+        {half("R")}
+      </div>
+      <div style={{
+        fontFamily:"'Playfair Display',serif", fontSize:"clamp(2.2rem,9vw,3.6rem)", fontWeight:900,
+        color:"#fff", letterSpacing:"0.05em", lineHeight:1, marginTop:22,
+        textShadow:"0 0 30px rgba(155,89,182,1),0 0 70px rgba(155,89,182,0.85)",
+        animation:"fadeUp .35s .3s both",
+      }}>MYTHICAL SPLIT</div>
+      <div style={{
+        display:"flex", alignItems:"center", gap:8, marginTop:10,
+        animation:"fadeUp .35s .42s both",
+      }}>
+        <GameIcon name="mythical" size={20} color="#fff"/>
+        <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.2rem", color:"#fff", fontWeight:700, textShadow:"0 0 22px rgba(155,89,182,0.95)" }}>{name}</span>
+        <GameIcon name="mythical" size={20} color="#fff"/>
+      </div>
     </div>
   );
 }
@@ -1275,7 +1590,7 @@ function HistoryStrip({ history, landscape }) {
           border: `1px solid ${h.outcome==="win"?"rgba(39,174,96,0.5)":h.outcome==="doink"?"rgba(231,76,60,0.55)":h.outcome==="pass"?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.16)"}`,
         }}>
           <span style={{ fontSize:"0.65rem", color:h.outcome==="win"?"#27AE60":h.outcome==="doink"?"#E74C3C":"rgba(245,237,216,0.62)", fontWeight:700, whiteSpace:"nowrap" }}>{h.name}</span>
-          <span style={{ fontSize:"0.65rem", color:"rgba(245,237,216,0.85)", fontWeight:600, whiteSpace:"nowrap" }}>{h.outcome==="win"?`+$${h.amount}`:h.outcome==="doink"?`💥-$${h.amount}`:h.outcome==="miss"?`-$${h.amount}`:"pass"}</span>
+          <span style={{ fontSize:"0.65rem", color:"rgba(245,237,216,0.85)", fontWeight:600, whiteSpace:"nowrap" }}>{h.outcome==="win"?`+◆${h.amount}`:h.outcome==="doink"?`💥-◆${h.amount}`:h.outcome==="miss"?`-◆${h.amount}`:"pass"}</span>
         </div>
       ))}
     </div>
@@ -1356,12 +1671,13 @@ function RulesPage({ onClose }) {
       </div>
       <div style={{ maxWidth:480, margin:"0 auto" }}>
         {sec("The Basics","To start, everyone replenishes the pot. Each player is dealt two cards. On your turn, you bet whether a third 'hit' card will fall between your two cards in value. Aces are low (value 1). Win and the pot pays you 1:1. Miss and your bet goes to the pot.")}
-        {sec("DOINK 💥","If your hit card matches the rank of either of your two cards — DOINK. You pay double your bet into the pot. Bet $10 and doink, you owe $20. This is the game.")}
-        {sec("Replenish","Whenever the pot hits $0, everyone replenishes immediately and play continues. The game starts the same way.")}
-        {sec("Bet Types",<><b style={{color:"#F0C96A"}}>Spread Bet</b> — Hit falls between your cards. Pays 1:1.<br/><br/><b style={{color:"#E74C3C"}}>💥 Doink Bet</b> — Hit MATCHES one of your cards. Pays 7:1.<br/><br/><b style={{color:"#9B59B6"}}>✨ Mythical Split</b> — Cards exactly 2 apart. That one middle card pays 12:1.<br/><br/><b style={{color:"#D4A843"}}>🎰 Blind Bet</b> — Bet before cards are dealt. A hit pays 2:1.</>)}
+        {sec("DOINK 💥","If your hit card matches the rank of either of your two cards — DOINK. You pay double your bet into the pot. Bet ◆10 and doink, you owe ◆20. This is the game.")}
+        {sec("Replenish","Whenever the pot hits ◆0, everyone replenishes immediately and play continues. The game starts the same way.")}
+        {sec("Bet Types",<><b style={{color:"#F0C96A"}}>Spread Bet</b> — Hit falls between your cards. Pays 1:1.<br/><br/><b style={{color:"#E74C3C"}}>💥 Doink Bet</b> — Hit MATCHES one of your cards. Pays 7:1.<br/><br/><b style={{color:"#C0392B"}}>💥💥 Double Doink</b> — When you hold a pair, bet that a third card of that rank is the hit. Pays 18:1.<br/><br/><b style={{color:"#9B59B6"}}>✨ Mythical Split</b> — Cards exactly 2 apart. That one middle card pays 12:1.<br/><br/><b style={{color:"#D4A843"}}>🎰 Blind Bet</b> — Bet before cards are dealt. A hit pays 2:1.</>)}
         {sec("Hand Trading","Buy or sell hands at any point. The buyer plays both their hand AND the bought hand, in original turn order. You collect payment immediately when you sell.")}
         {sec("Insurance","Pay a premium upfront. If you doink, a portion of your penalty is covered.")}
-        {sec("Strategy","Wide spreads (A–K) = bet big. Narrow spreads = pass or doink bet. Selling a trash hand for chips beats passing. Position matters — going early in a fat pot differs from going late.")}
+        {sec("Strategy","Wide spreads (A–K) = play big. Narrow spreads = pass or doink bet. Selling a trash hand for chips beats passing. Position matters — going early in a fat pot differs from going late.")}
+        {sec("Fictional Play Only","DOINK uses fictional play chips. No real money is wagered, won, lost, or redeemable. Chips, levels, and rankings are for entertainment only.")}
       </div>
     </div>
   );
@@ -1589,9 +1905,9 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
           <div style={sectionLabel}>Game Settings</div>
           <div style={{ ...card, marginBottom:14, display:"flex", flexDirection:"column", gap:14 }}>
             <SettingRow label="Bots" options={BOT_COUNT_OPTIONS} value={sel.botCount} lvl={lvl} fmt={v=>v} onPick={v=>set({botCount:v})}/>
-            <SettingRow label="Buy-In" options={BUYIN_OPTIONS} value={sel.buyIn} lvl={lvl} fmt={v=>`$${v}`} onPick={v=>set({buyIn:v})}/>
-            <SettingRow label="Ante" options={ANTE_OPTIONS} value={sel.ante} lvl={lvl} fmt={v=>`$${v}`} onPick={v=>set({ante:v})}/>
-            <SettingRow label="Replenish" options={REPLENISH_OPTIONS} value={sel.replenishAmount} lvl={lvl} fmt={v=>`$${v}`} onPick={v=>set({replenishAmount:v})}/>
+            <SettingRow label="Starting Chips" options={BUYIN_OPTIONS} value={sel.buyIn} lvl={lvl} fmt={v=>`◆${v}`} onPick={v=>set({buyIn:v})}/>
+            <SettingRow label="Ante" options={ANTE_OPTIONS} value={sel.ante} lvl={lvl} fmt={v=>`◆${v}`} onPick={v=>set({ante:v})}/>
+            <SettingRow label="Replenish" options={REPLENISH_OPTIONS} value={sel.replenishAmount} lvl={lvl} fmt={v=>`◆${v}`} onPick={v=>set({replenishAmount:v})}/>
           </div>
 
           <button onClick={onShowTutorial} style={{ ...sBtn, width:"100%", fontSize:"0.86rem", padding:"11px" }}>
@@ -1610,10 +1926,10 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
         <div style={{ maxWidth:440, margin:"0 auto" }}>
           <div style={{ fontSize:"0.66rem", color:"rgba(245,237,216,0.5)", textAlign:"center", marginBottom:8, lineHeight:1.5 }}>
             {theme.name} · {cardBack.name} · {chipSet.name}<br/>
-            {sel.botCount} Bots · ${sel.buyIn} Buy-In · ${sel.ante} Ante · ${sel.replenishAmount} Replenish
+            {sel.botCount} Bots · ${sel.buyIn} Starting · ${sel.ante} Ante · ${sel.replenishAmount} Replenish
           </div>
           <button onClick={startGame} style={{ ...gBtn, width:"100%", padding:"16px", fontSize:"1.02rem", textTransform:"uppercase", letterSpacing:"0.06em" }}>
-            Start — ${sel.buyIn} Buy-In · {sel.botCount} Bots
+            Start — ${sel.buyIn} Starting · {sel.botCount} Bots
           </button>
         </div>
       </div>
@@ -1668,20 +1984,21 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
     .map(p => ({ ...p, delta: p.chips - (prevChips[p.id] || 0), turns: turnsByName[p.name] || [] }))
     .sort((a, b) => b.delta - a.delta);
 
-  // Human-friendly label per turn: "won $5 Spread", "DOINKED −$10 Mythical",
-  // "missed −$3 Doink Bet", "passed".
+  // Human-friendly label per turn: "won ◆5 Spread", "DOINKED −◆10 Mythical",
+  // "missed −◆3 Doink Bet", "passed".
   const labelFor = (t) => {
     const typeLabel = t.betType === "doink" ? "Doink Bet"
+                    : t.betType === "doubledoink" ? "Double Doink"
                     : t.betType === "mythical" ? "Mythical"
                     : t.betType === "blind" ? "Blind Bet"
                     : t.betType === "spread" ? "Spread"
                     : null;
     if (t.outcome === "pass") return { text: "passed", color: "rgba(245,237,216,0.4)", sym: "—" };
     if (t.outcome === "win")
-      return { text: `won $${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "#27AE60", sym: "✓" };
+      return { text: `won ◆${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "#27AE60", sym: "✓" };
     if (t.outcome === "doink")
-      return { text: `DOINKED −$${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "#E74C3C", sym: "💥" };
-    return { text: `missed −$${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "rgba(245,237,216,0.65)", sym: "✗" };
+      return { text: `DOINKED −◆${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "#E74C3C", sym: "💥" };
+    return { text: `missed −◆${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "rgba(245,237,216,0.65)", sym: "✗" };
   };
 
   return (
@@ -1724,9 +2041,9 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
                     color: p.delta>0?"#27AE60":p.delta<0?"#E74C3C":"rgba(245,237,216,0.4)",
                     textShadow: p.delta>0?"0 0 12px rgba(39,174,96,0.5)":p.delta<0?"0 0 12px rgba(231,76,60,0.5)":"none",
                   }}>
-                    {p.delta>0?`+$${p.delta}`:p.delta<0?`−$${Math.abs(p.delta)}`:"—"}
+                    {p.delta>0?`+◆${p.delta}`:p.delta<0?`−◆${Math.abs(p.delta)}`:"—"}
                   </div>
-                  <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"0.95rem", color:"#F0C96A", fontWeight:700, minWidth:50, textAlign:"right" }}>${p.chips}</div>
+                  <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"0.95rem", color:"#F0C96A", fontWeight:700, minWidth:50, textAlign:"right" }}>◆{p.chips}</div>
                 </div>
               </div>
               {/* Inline turn(s) — what they actually did */}
@@ -1750,18 +2067,30 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
         {/* Pot */}
         <div style={{ textAlign:"center", padding:"10px 14px", background:"rgba(212,168,67,0.06)", border:"1px solid rgba(212,168,67,0.18)", borderRadius:12, marginBottom:18 }}>
           <div style={{ fontSize:"0.58rem", letterSpacing:"0.18em", color:"rgba(212,168,67,0.5)", fontWeight:700, textTransform:"uppercase" }}>Pot Remaining</div>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.5rem", color:"#F0C96A", fontWeight:900, lineHeight:1.1 }}>${pot}</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.5rem", color:"#F0C96A", fontWeight:900, lineHeight:1.1 }}>◆{pot}</div>
         </div>
 
         <div style={{ display:"flex", justifyContent:"center", gap:10, flexWrap:"wrap" }}>
-          <button onClick={onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>Next Round →</button>
-          {mode === "career" && onCashOut && (() => {
+          {(() => {
             const human = humanPlayerId != null ? players.find(p => p.id === humanPlayerId) : players.find(p => !p.isBot);
             const cash = human?.chips || 0;
+            // A broke human can't continue — show a single clear end button.
+            if (mode === "career" && cash <= 0) {
+              return (
+                <button onClick={onCashOut || onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>
+                  End Session →
+                </button>
+              );
+            }
             return (
-              <button onClick={onCashOut} style={{ ...sBtn, fontSize:"1.05rem", padding:"15px 24px", color:"#F0C96A", border:"1.5px solid rgba(212,168,67,0.6)" }}>
-                💰 Cash Out (${cash})
-              </button>
+              <>
+                <button onClick={onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>Next Round →</button>
+                {mode === "career" && onCashOut && (
+                  <button onClick={onCashOut} style={{ ...sBtn, fontSize:"1.05rem", padding:"15px 24px", color:"#F0C96A", border:"1.5px solid rgba(212,168,67,0.6)" }}>
+                    💰 Leave Table (${cash})
+                  </button>
+                )}
+              </>
             );
           })()}
         </div>
@@ -1777,7 +2106,7 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
 function SoldHandPlayback({ data, onDismiss }) {
   const { seller, buyer, cards, hitCard, betType, amount, outcome, payout, sellerPayout } = data;
   const [a, b] = cards;
-  const betLabel = betType==="doink"?"💥 Doink Bet":betType==="mythical"?"✨ Mythical":"Spread Bet";
+  const betLabel = betType==="doink"?"💥 Doink Bet":betType==="doubledoink"?"💥💥 Double Doink":betType==="mythical"?"✨ Mythical":"Spread Bet";
   const outcomeColor = outcome==="win"?"#27AE60":outcome==="doink"?"#E74C3C":"rgba(245,237,216,0.45)";
   const outcomeLabel = outcome==="win"?"WIN 🎉":outcome==="doink"?"💥 DOINK!":outcome==="miss"?"MISS":null;
   const sellerCut = sellerPayout > 0;
@@ -1794,7 +2123,7 @@ function SoldHandPlayback({ data, onDismiss }) {
           <Card card={a} glow/>
           <div style={{ textAlign:"center" }}>
             <div style={{ fontSize:"0.7rem", color:"rgba(245,237,216,0.42)", marginBottom:4, letterSpacing:"0.1em", textTransform:"uppercase", fontWeight:600 }}>Bet</div>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", color:"#F0C96A", fontWeight:700, lineHeight:1 }}>${amount}</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", color:"#F0C96A", fontWeight:700, lineHeight:1 }}>◆{amount}</div>
             <div style={{ fontSize:"0.7rem", color:"rgba(245,237,216,0.45)", marginTop:4, fontWeight:600 }}>{betLabel}</div>
           </div>
           <Card card={b} glow/>
@@ -1842,8 +2171,8 @@ function SoldHandPlayback({ data, onDismiss }) {
 function BetMarker({ marker, playerName, landscape }) {
   if (!marker) return null;
   const { amount, type, outcome, isBought } = marker;
-  const label = type === "doink" ? "DOINK BET" : type === "mythical" ? "MYTHICAL" : type === "blind" ? "BLIND BET" : "SPREAD BET";
-  const color = type === "doink" ? "#E74C3C" : type === "mythical" ? "#9B59B6" : type === "blind" ? "#D4A843" : "#F0C96A";
+  const label = type === "doink" ? "DOINK BET" : type === "doubledoink" ? "DOUBLE DOINK" : type === "mythical" ? "MYTHICAL" : type === "blind" ? "BLIND BET" : "SPREAD BET";
+  const color = type === "doink" ? "#E74C3C" : type === "doubledoink" ? "#C0392B" : type === "mythical" ? "#9B59B6" : type === "blind" ? "#D4A843" : "#F0C96A";
   const bg = type === "doink" ? "rgba(231,76,60,0.18)" : type === "mythical" ? "rgba(155,89,182,0.18)" : type === "blind" ? "rgba(212,168,67,0.18)" : "rgba(240,201,106,0.14)";
   const outcomeColor = outcome === "win" ? "#27AE60" : outcome === "doink" ? "#E74C3C" : outcome === "miss" ? "rgba(245,237,216,0.6)" : null;
   const outcomeLabel = outcome === "win" ? "✓ WIN" : outcome === "doink" ? "💥 DOINK" : outcome === "miss" ? "MISS" : null;
@@ -1877,7 +2206,7 @@ function BetMarker({ marker, playerName, landscape }) {
         </div>
       )}
       <div style={{ display:"flex", alignItems:"baseline", gap:10 }}>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2.2rem", color: outcomeColor || color, fontWeight:900, lineHeight:1, textShadow:`0 0 18px ${outcomeColor || color}aa` }}>${amount}</div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2.2rem", color: outcomeColor || color, fontWeight:900, lineHeight:1, textShadow:`0 0 18px ${outcomeColor || color}aa` }}>◆{amount}</div>
         <div style={{ fontSize:"0.78rem", letterSpacing:"0.16em", color: outcomeColor || color, fontWeight:800 }}>{label}</div>
       </div>
       {outcomeLabel && (
@@ -1892,7 +2221,9 @@ function BetMarker({ marker, playerName, landscape }) {
 // ═══════════════════════════════════════════════════════════
 // GAME
 // ═══════════════════════════════════════════════════════════
-function Game({ cfg, onExit, onCareerComplete }) {
+function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
+  // Safe achievement emitter — no-op if not provided.
+  const emitAch = onAchievement || (() => {});
   const { nH, nB, chips: startChips, ante: anteAmt, denoms, names, botNames, orientation, hintsDefault = true } = cfg;
   const landscape = orientation === "landscape";
   const isCareer = cfg.mode === "career";
@@ -1977,6 +2308,8 @@ function Game({ cfg, onExit, onCareerComplete }) {
   const [phase, setPhase] = useState("ante");
   const [firstIdx, setFirstIdx] = useState(0);
   const [seatAnims, setSeatAnims] = useState({});
+  // True briefly while the deck riffle/shuffle animation plays.
+  const [shuffling, setShuffling] = useState(false);
   const [round, setRound] = useState(1);
   const [log, setLog] = useState([{ msg: "Welcome to DOINK! 🃏", type: "info" }]);
   const [sheet, setSheet] = useState(null);
@@ -1995,6 +2328,25 @@ function Game({ cfg, onExit, onCareerComplete }) {
   const [soldHandPlayback, setSoldHandPlayback] = useState(null); // real-time sold hand overlay
   const [replenishFlash, setReplenishFlash] = useState(false);
   const [doinkFlash, setDoinkFlash] = useState(null);
+  const [mythicalFlash, setMythicalFlash] = useState(null);
+  // Flying-chip animations. Each flight is a pure-visual descriptor; the list
+  // is rendered by <FlyingChips> and entries are auto-cleared after they play.
+  const [chipFlights, setChipFlights] = useState([]);
+  const flightIdRef = useRef(0);
+  // Seat positions mirrored from render so non-render code can read them.
+  const seatPosRef = useRef({});
+  // Launch a chip flight from one table-percent point to another. Visual only
+  // — never changes bet/pot state. `kind` just tweaks duration.
+  const launchChipFlight = (fromX, fromY, toX, toY, amount, kind = "bet") => {
+    if (fromX == null || toX == null) return;
+    const id = ++flightIdRef.current;
+    const dur = kind === "payout" ? 760 : 520;
+    setChipFlights(f => [...f, { id, fromX, fromY, toX, toY, amount, dur }]);
+    // Auto-clear once the animation (plus chip stagger) has finished.
+    setTimeout(() => {
+      setChipFlights(f => f.filter(x => x.id !== id));
+    }, dur + 400);
+  };
   const [history, setHistory] = useState([]); // recent turn summaries
   const [showSecondary, setShowSecondary] = useState(false);
   const [hitCardRevealed, setHitCardRevealed] = useState(false);
@@ -2053,7 +2405,8 @@ function Game({ cfg, onExit, onCareerComplete }) {
     setPot(p);
     potRef.current = p;
     flashPot(p);
-    addLog(`💰 Pot hit $0 — everyone replenishes $${replenishAmt}!`);
+    addLog(`💰 Pot hit ◆0 — everyone replenishes ◆${replenishAmt}!`);
+    emitAch(EVENTS.POT_REPLENISHED, {});
   };
 
   const applyPotChange = (d, ps) => {
@@ -2105,7 +2458,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
         if (Math.random() < BOT_CONFIG.blindBetChance * pz.blind && bot.chips > 0) {
           const bb = Math.max(1, Math.floor(Math.min(potRef.current, bot.chips) * BOT_CONFIG.blindBetFraction * pz.confidence));
           setPlayers(prev => prev.map(p => p.id === bot.id ? { ...p, chips: p.chips - bb, bet: bb, betType: "blind" } : p));
-          addLog(`${bot.name} blind bets $${bb}!`);
+          addLog(`${bot.name} blind bets ◆${bb}!`);
         }
       }, delay);
       delay += 60;
@@ -2121,6 +2474,9 @@ function Game({ cfg, onExit, onCareerComplete }) {
   // ── DEAL
   const startDealing = () => {
     reshuffle();
+    // Brief deck-shuffle animation as the fresh deck is shuffled.
+    setShuffling(true);
+    setTimeout(() => setShuffling(false), 600);
     const ps = playersRef.current;
     const n = ps.length;
     const order = Array.from({ length: n }, (_, i) => (firstIdx + i) % n);
@@ -2234,7 +2590,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
     // ── Mythical hands (spread 2): the 12× is too juicy to pass on ──
     if (myth) {
       // EV of mythical bet: hitProb*12 − doinkProb*1 − missProb*1
-      // For myth: hitProb = 4/50 = 0.08, ev per $1 = 0.08*12 − 0.92 = 0.04 (positive)
+      // For myth: hitProb = 4/50 = 0.08, ev per ◆1 = 0.08*12 − 0.92 = 0.04 (positive)
       // Confident bots also play side-doink for entertainment.
       if (capMyth >= 1 && Math.random() < 0.85) {
         // Bet between 25% and 70% of max, scaled by confidence
@@ -2253,13 +2609,15 @@ function Game({ cfg, onExit, onCareerComplete }) {
       return;
     }
 
-    // ── Same rank: only doink bet has any chance of winning ──
+    // ── Same rank (a pair): the Double Doink bet is the play here ──
     if (sameRank) {
-      // doinkProb = 2/50 = 4%; 7× payout → EV = 0.04*7 − 0.96 = -0.68 per $1
-      // Negative EV. Most bots should pass; chaotic ones occasionally swing.
-      if (capDoink >= 1 && Math.random() < 0.25 * pz.doink) {
-        const amt = Math.max(1, Math.floor(capDoink * 0.25));
-        execBet(slot, p, amt, "doink");
+      // Double Doink: hit a third of the rank. doubleProb = 2/50 = 4%; 18×
+      // payout → EV per ◆1 = 0.04*18 − 0.96 = -0.24. Still -EV (it's a
+      // long-shot), so most bots pass; bolder bots take the swing.
+      const capDouble = Math.min(p.chips, potNow);
+      if (capDouble >= 1 && Math.random() < 0.28 * pz.doink) {
+        const amt = Math.max(1, Math.floor(capDouble * 0.3));
+        execBet(slot, p, amt, "doubledoink");
         return;
       }
       execPass(slot, p);
@@ -2267,12 +2625,12 @@ function Game({ cfg, onExit, onCareerComplete }) {
     }
 
     // ── Normal spread hands ──
-    // Spread EV per $1 = hitProb*1 − doinkProb*1 − missProb*0 = hitProb − doinkProb
+    // Spread EV per ◆1 = hitProb*1 − doinkProb*1 − missProb*0 = hitProb − doinkProb
     // hitProb hits +EV around spread 4+; bots should play moderate-to-strong hands.
     const spreadEV = hitProb - doinkProb;
 
     // Aggressive on strong hands. A-J = spread 10 → hitProb = 36/50 = 72%,
-    // doinkProb = 12%. EV per $1 ≈ +0.60. Bot should bet.
+    // doinkProb = 12%. EV per ◆1 ≈ +0.60. Bot should bet.
     if (spreadEV > 0.05) {
       // Always bet positive EV (modulo a tiny variance pass)
       const passChance = Math.max(0.04, 0.18 - spreadEV * 0.4) * (1 / Math.max(0.6, pz.risk));
@@ -2285,7 +2643,23 @@ function Game({ cfg, onExit, onCareerComplete }) {
         let frac = 0.3 + Math.min(0.55, spreadEV * 0.85);
         frac *= Math.min(1.1, pz.confidence);
         frac = Math.min(0.9, frac);
-        const amt = Math.max(1, Math.min(capSpread, Math.floor(capSpread * frac)));
+        let amt = Math.max(1, Math.min(capSpread, Math.floor(capSpread * frac)));
+
+        // ── Full-pot tuning ──
+        // (1) Small pot: if the pot is at or below the table's replenish
+        //     amount, leaving ◆1–3 behind looks timid. Bots round up and
+        //     take the whole pot (when they can afford it).
+        const smallPot = potNow <= replenishAmt;
+        // (2) Premium hand: a wide spread (≈ A-K territory) is a near lock —
+        //     bet the entire pot if the bot can cover it.
+        const premiumHand = sp >= 10;
+        if ((smallPot || premiumHand) && p.chips >= potNow && potNow > 0) {
+          // Most of the time go all-in on the pot; occasionally a cautious
+          // bot still sizes down, so it isn't 100% predictable.
+          if (Math.random() < (premiumHand ? 0.9 : 0.8)) {
+            amt = Math.min(capSpread, potNow);
+          }
+        }
         execBet(slot, p, amt, "spread");
         return;
       }
@@ -2340,7 +2714,12 @@ function Game({ cfg, onExit, onCareerComplete }) {
     // value until the resolution so the user doesn't see chips changing before
     // they see the hit card.
     setPlayers(prev => prev.map(pl => pl.id === p.id ? { ...pl, bet: (pl.bet || 0) + amount, betType: type } : pl));
-    addLog(`${p.name} bets $${amount} [${type}]${slot.isBought ? " (bought hand)" : ""}.`);
+    addLog(`${p.name} bets ◆${amount} [${type}]${slot.isBought ? " (bought hand)" : ""}.`);
+
+    // Visual: fly chips from the bettor's seat to the pot (center of table).
+    // Pure decoration — pot/chip math is unchanged.
+    const sp = seatPosRef.current[p.id];
+    if (sp) launchChipFlight(sp.x, sp.y, 50, 50, amount, "bet");
 
     // Show bet marker on felt immediately
     setBetMarker({ playerId: p.id, amount, type, isBought: !!slot.isBought });
@@ -2374,11 +2753,31 @@ function Game({ cfg, onExit, onCareerComplete }) {
             chipDelta = amount + winnings;
             pd = -winnings;
             outcome = "win";
-            addLog(`💥🎉 ${p.name} DOINK BET HITS! +$${winnings}`, "win");
+            addLog(`💥🎉 ${p.name} DOINK BET HITS! +◆${winnings}`, "win");
             showComment(p.name, getComment("doinkBetHit"));
           } else {
             pd = amount;
             addLog(`${p.name} doink bet missed.`);
+            showComment(p.name, getComment("miss"));
+          }
+        } else if (type === "doubledoink") {
+          // ── DOUBLE DOINK ──
+          // Only offered when the player holds a pair (two same-rank cards).
+          // Bet that the hit card matches that rank — a third of the rank.
+          // Two such cards remain among 50 unseen → 4% (1-in-25). Pays 18×,
+          // capped to the pot like the other long-shot bets. A miss simply
+          // loses the bet (1×) — no extra doink penalty, since the player is
+          // already betting ON the match.
+          if (cv(hitCard) === cv(a)) {  // a and b share a rank here
+            const winnings = Math.min(amount * 18, Math.max(0, potRef.current));
+            chipDelta = amount + winnings;
+            pd = -winnings;
+            outcome = "win";
+            addLog(`💥💥 ${p.name} DOUBLE DOINK HITS! +◆${winnings}`, "win");
+            showComment(p.name, getComment("doinkBetHit"));
+          } else {
+            pd = amount;
+            addLog(`${p.name} double doink missed.`);
             showComment(p.name, getComment("miss"));
           }
         } else if (type === "mythical") {
@@ -2388,14 +2787,14 @@ function Game({ cfg, onExit, onCareerComplete }) {
             chipDelta = amount + winnings;
             pd = -winnings;
             outcome = "win";
-            addLog(`✨ ${p.name} MYTHICAL! +$${winnings}`, "win");
+            addLog(`✨ ${p.name} MYTHICAL! +◆${winnings}`, "win");
             showComment(p.name, getComment("mythical"));
           } else if (isDoinkCard(a, b, hitCard)) {
             const cov = p.insurance?.coverage || 0;
             chipDelta = -(amount - cov);
             pd = amount * 2 - cov;
             outcome = "doink";
-            addLog(`💥 ${p.name} DOINKS! -$${amount * 2}`, "doink");
+            addLog(`💥 ${p.name} DOINKS! -◆${amount * 2}`, "doink");
             showComment(p.name, getComment("doink"));
           } else {
             pd = amount;
@@ -2408,14 +2807,14 @@ function Game({ cfg, onExit, onCareerComplete }) {
             chipDelta = amount + winnings;
             pd = -winnings;
             outcome = "win";
-            addLog(`${p.name} WINS $${winnings}!`, "win");
+            addLog(`${p.name} WINS ◆${winnings}!`, "win");
             showComment(p.name, getComment("win"));
           } else if (isDoinkCard(a, b, hitCard)) {
             const cov = p.insurance?.coverage || 0;
             chipDelta = -(amount - cov);
             pd = amount * 2 - cov;
             outcome = "doink";
-            addLog(`💥 ${p.name} DOINKS! -$${amount * 2}`, "doink");
+            addLog(`💥 ${p.name} DOINKS! -◆${amount * 2}`, "doink");
             showComment(p.name, getComment("doink"));
           } else {
             pd = amount;
@@ -2425,6 +2824,40 @@ function Game({ cfg, onExit, onCareerComplete }) {
         }
 
         const finalChips = Math.max(0, chipsAfterBet + chipDelta);
+
+        // ── Achievement events ──
+        // These fire for the human's own actions (achievements are personal).
+        // `slot.isBought` means the human is playing a hand they bought.
+        const humanActed = !p.isBot;
+        if (humanActed) {
+          emitAch(EVENTS.BET_PLACED, {});
+          if (isCareer) emitAch(EVENTS.CAREER_HAND_PLAYED, {});
+          if (type === "blind" || slot.betType === "blind") {
+            emitAch(EVENTS.BLIND_BET_PLACED, {});
+          }
+          // HAND_PLAYED / HAND_WON count the human's OWN hand (not bought
+          // hands — those are tracked via HAND_BOUGHT events).
+          if (!slot.isBought) {
+            emitAch(EVENTS.HAND_PLAYED, {});
+            if (outcome === "win") emitAch(EVENTS.HAND_WON, {});
+          }
+          if (outcome === "win") {
+            emitAch(EVENTS.BET_WON, {});
+            if (type === "doink")    emitAch(EVENTS.DOINK_WON, {});
+            if (type === "mythical") emitAch(EVENTS.MYTHICAL_WON, {});
+            if (potRef.current >= 200) emitAch(EVENTS.BIG_POT_WON, {});
+            if (slot.isBought) emitAch(EVENTS.HAND_BOUGHT_WON, {});
+            // Blind-bet outcome events.
+            if (type === "blind" || slot.betType === "blind") emitAch(EVENTS.BLIND_BET_WON, {});
+          } else {
+            if (type === "blind" || slot.betType === "blind") emitAch(EVENTS.BLIND_BET_LOST, {});
+          }
+          if (outcome === "doink") emitAch(EVENTS.DOINK_LOST, {});
+        }
+        // DOINK / Mythical events fire for ANY player at the table (the human
+        // witnesses them). Triggered whenever a doink/mythical occurs.
+        if (outcome === "doink") emitAch(EVENTS.DOINK_TRIGGERED, {});
+        if (type === "mythical" && outcome === "win") emitAch(EVENTS.MYTHICAL_SPLIT, {});
 
         // Bought-hand seller payout
         let sellerPayout = 0;
@@ -2448,14 +2881,25 @@ function Game({ cfg, onExit, onCareerComplete }) {
 
         if (sellerPayout > 0) {
           const sellerName = playersRef.current.find(x => x.id === slot.sellerId)?.name || "Seller";
-          addLog(`💰 ${sellerName} gets +$${sellerPayout} (${sellerCut}% of winnings).`, "win");
+          addLog(`💰 ${sellerName} gets +◆${sellerPayout} (${sellerCut}% of winnings).`, "win");
         }
 
         if (!slot.isBought) setSeatAnims(prev => ({ ...prev, [p.id]: outcome }));
 
+        // Visual: on a win, chips fly from the pot back to the winner's seat.
+        if (outcome === "win") {
+          const wsp = seatPosRef.current[p.id];
+          if (wsp) launchChipFlight(50, 50, wsp.x, wsp.y, Math.max(amount, 20), "payout");
+        }
+
         if (outcome === "doink") {
           setDoinkFlash(p.name);
           setTimeout(() => setDoinkFlash(null), 1100);
+        }
+        // Mythical Split — its own signature animation, distinct from DOINK.
+        if (type === "mythical" && outcome === "win") {
+          setMythicalFlash(p.name);
+          setTimeout(() => setMythicalFlash(null), 1500);
         }
 
         const histAmount = outcome === "win" ? Math.max(0, chipDelta - amount) : outcome === "doink" ? amount * 2 - (p.insurance?.coverage || 0) : amount;
@@ -2517,7 +2961,18 @@ function Game({ cfg, onExit, onCareerComplete }) {
   // ── NEXT ROUND
   const nextRound = () => {
     const alive = players.filter(p => p.chips > 0);
-    if (alive.length < 2) { setPhase("over"); return; }
+    // End conditions:
+    //  • Fewer than 2 players with chips → game over.
+    //  • CAREER MODE: the human is broke. The session must end with a summary
+    //    — otherwise the table would try to start a round with no human seat
+    //    and freeze. (Previously only checked alive.length, so a broke human
+    //    with solvent bots left the game stuck.)
+    const human = players.find(p => !p.isBot);
+    const humanBroke = (human?.chips || 0) <= 0;
+    if (alive.length < 2 || (isCareer && humanBroke)) {
+      setPhase("over");
+      return;
+    }
     setSeatAnims({}); setPendingOffer(null); setPendingSellOffer(null); setSheet(null); setTurnQueue([]); setQueueIdx(0);
     setHistory([]);
     queueIdxRef.current = 0;
@@ -2590,13 +3045,26 @@ function Game({ cfg, onExit, onCareerComplete }) {
     }
     const sellerCards = seller.cards;
     const pctClause = offer.pct ? ` + ${offer.pct}% of winnings` : "";
-    addLog(`🤝 ${seller.name} sold hand to ${buyer.name} for $${chipTransfer}${pctClause}.`);
-    showToast(`🤝 ${seller.name} → ${buyer.name}: $${chipTransfer}${pctClause}`);
+    addLog(`🤝 ${seller.name} sold hand to ${buyer.name} for ◆${chipTransfer}${pctClause}.`);
+    showToast(`🤝 ${seller.name} → ${buyer.name}: ◆${chipTransfer}${pctClause}`);
 
     // ── CAREER STATS — record human trade involvement ──
     if (isCareer) {
       if (!buyer.isBot)  careerStatsRef.current.handsBought++;
       if (!seller.isBot) careerStatsRef.current.handsSold++;
+    }
+
+    // ── Achievement events ──
+    // Fire when the HUMAN is the buyer or seller of the traded hand.
+    if (!buyer.isBot) {
+      emitAch(EVENTS.HAND_BOUGHT, { seller: seller.name });
+    }
+    if (!seller.isBot) {
+      emitAch(EVENTS.HAND_SOLD, {});
+    }
+    // Accepting a counter — `offer.isCounter` marks this as a countered deal.
+    if (offer.isCounter && (!buyer.isBot || !seller.isBot)) {
+      emitAch(EVENTS.COUNTER_ACCEPTED, {});
     }
 
     setPlayers(prev => prev.map(p => {
@@ -2637,19 +3105,27 @@ function Game({ cfg, onExit, onCareerComplete }) {
   };
 
   // Withdraw an open sell auction (seller cancels)
+  // Withdraw the human's open sell offer. Ref-based so it works correctly
+  // even when called from inside another handler's closure. Bots checking
+  // `pendingSellOfferRef.current` will see null and not accept a dead offer.
   const withdrawSellOffer = () => {
-    if (!pendingSellOffer) return;
-    addLog(`${players.find(p => p.id === pendingSellOffer.sellerId)?.name || "Seller"} withdraws the sell offer.`);
+    const offer = pendingSellOfferRef.current;
+    if (!offer) return;
+    const human = playersRef.current.find(p => !p.isBot);
+    // Only auto-withdraw the human's own broadcast offer.
+    if (human && offer.sellerId !== human.id) return;
+    addLog(`${playersRef.current.find(p => p.id === offer.sellerId)?.name || "Seller"} withdraws the sell offer.`);
+    pendingSellOfferRef.current = null;
     setPendingSellOffer(null);
   };
 
   const botRespondToOffer = offer => {
-    // The bot is whichever side isn't the human initiator.
-    // When human SELLS: buyerId=bot, sellerId=human → bot evaluates human's hand quality to decide purchase price.
-    // When human BUYS: sellerId=bot, buyerId=human → bot evaluates its own hand to decide if the price is fair.
-    const botId = offer.buyerId !== curPlayer?.id ? offer.buyerId : offer.sellerId;
-    const botPlayer = playersRef.current.find(p => p.id === botId);
-    if (!botPlayer || !botPlayer.isBot) return;
+    // The bot is whichever side of the offer is a bot. The human initiated
+    // this offer, so exactly one side is the human and the other is the bot.
+    const buyerP = playersRef.current.find(p => p.id === offer.buyerId);
+    const sellerP = playersRef.current.find(p => p.id === offer.sellerId);
+    const botPlayer = buyerP?.isBot ? buyerP : sellerP?.isBot ? sellerP : null;
+    if (!botPlayer) return;
 
     const sellerPlayer = playersRef.current.find(p => p.id === offer.sellerId);
     if (!sellerPlayer || sellerPlayer.cards.length < 2) return;
@@ -2664,9 +3140,11 @@ function Game({ cfg, onExit, onCareerComplete }) {
         addLog(`${botPlayer.name} accepts the offer.`);
       } else {
         const counter = Math.round(Math.max((offer.chips || 0) * BOT_CONFIG.counterMultiplier, base));
-        addLog(`${botPlayer.name} counters: $${counter}.`);
+        addLog(`${botPlayer.name} counters: ◆${counter}.`);
         setSheet(null);
-        setPendingOffer({ ...offer, chips: counter, pct: 0, desc: `$${counter} upfront (counter from ${botPlayer.name})`, isCounter: true });
+        setPendingOffer({ ...offer, chips: counter, pct: 0, desc: `◆${counter} upfront (counter from ${botPlayer.name})`, isCounter: true });
+        // The human received a counteroffer.
+        emitAch(EVENTS.COUNTER_RECEIVED, {});
       }
     }, 700);
   };
@@ -2721,7 +3199,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
         const askMult = (pz.confidence + pz.risk) / 2;
         const upfront = Math.max(1, Math.round(base * (0.55 + Math.random() * 0.5) * askMult));
         const pct = quality > 0.2 ? [0, 10, 15, 20][Math.floor(Math.random() * 4)] : 0;
-        const desc = pct > 0 ? `$${upfront} + ${pct}% of winnings` : `$${upfront} upfront`;
+        const desc = pct > 0 ? `◆${upfront} + ${pct}% of winnings` : `◆${upfront} upfront`;
         const offer = { sellerId: bot.id, chips: upfront, pct, desc, kind: pct > 0 ? "hybrid" : "chips" };
         setTimeout(() => {
           if (pendingSellOfferRef.current) return;
@@ -2739,19 +3217,24 @@ function Game({ cfg, onExit, onCareerComplete }) {
 
   const humanBet = type => {
     if (betVal <= 0 || locked || !curSlot || !curPlayer) return;
+    // Acting in the round withdraws any open sell offer (the hand is now
+    // committed to a bet, so it can't also be sold).
+    withdrawSellOffer();
     const amount = betVal; setBetVal(0); setSheet(null);
     // Show tap-to-reveal first
     setPendingReveal({ slot: curSlot, p: curPlayer, amount, type });
   };
   const humanPass = () => {
     if (locked || !curSlot || !curPlayer) return;
+    // Passing also withdraws any open sell offer.
+    withdrawSellOffer();
     execPass(curSlot, curPlayer); setSheet(null);
   };
   const humanBlindBet = () => {
     if (betVal <= 0) return;
     const h = playersRef.current.find(p => !p.isBot);
     if (!h) return;
-    addLog(`${h.name} blind bets $${betVal}!`);
+    addLog(`${h.name} blind bets ◆${betVal}!`);
     setPlayers(prev => prev.map(p => p.id === h.id ? { ...p, chips: p.chips - betVal, bet: betVal, betType: "blind" } : p));
     setBetVal(0); setSheet(null);
     // The human has acted — proceed to dealing.
@@ -2762,29 +3245,51 @@ function Game({ cfg, onExit, onCareerComplete }) {
     const coverage = Math.floor(maxBet * 0.4);
     if (!curPlayer || curPlayer.chips < premium) return;
     setPlayers(prev => prev.map(p => p.id === curPlayer.id ? { ...p, chips: p.chips - premium, insurance: { premium, coverage } } : p));
-    addLog(`🛡️ ${curPlayer.name} insures for $${premium} (covers $${coverage}).`);
+    addLog(`🛡️ ${curPlayer.name} insures for ◆${premium} (covers ◆${coverage}).`);
     setSheet(null);
   };
 
-  const makeOffer = (targetId, offerData, isBuying) => {
-    const offer = { buyerId: isBuying ? curPlayer.id : targetId, sellerId: isBuying ? targetId : curPlayer.id, chips: offerData.chips, pct: offerData.pct, desc: offerData.desc, kind: offerData.kind };
+  // ── Hand trading: explicit buyer/seller, never inferred from turn order ──
+  // The HUMAN is always the acting player here (these are only called from the
+  // human's trade sheets). buyerId/sellerId are passed explicitly so a bought
+  // hand can never land on the wrong player.
+  const makeBuyOffer = (targetId, offerData) => {
+    const human = playersRef.current.find(p => !p.isBot);
+    if (!human || targetId === human.id) return; // can't buy your own hand
+    const offer = { buyerId: human.id, sellerId: targetId, chips: offerData.chips, pct: offerData.pct, desc: offerData.desc, kind: offerData.kind };
     setSheet(null); setTradeMode(null);
-    const target = players.find(p => p.id === targetId);
+    const target = playersRef.current.find(p => p.id === targetId);
+    if (!target) return;
     if (target.isBot) {
       botRespondToOffer(offer);
     } else {
       setPendingOffer(offer);
-      addLog(`${curPlayer?.name} ${isBuying ? "wants to buy" : "offers to sell"}: ${offerData.desc}.`);
+      addLog(`${human.name} wants to buy: ${offerData.desc}.`);
+    }
+  };
+  const makeSellOffer = (targetId, offerData) => {
+    const human = playersRef.current.find(p => !p.isBot);
+    if (!human || targetId === human.id) return;
+    const offer = { buyerId: targetId, sellerId: human.id, chips: offerData.chips, pct: offerData.pct, desc: offerData.desc, kind: offerData.kind };
+    setSheet(null); setTradeMode(null);
+    const target = playersRef.current.find(p => p.id === targetId);
+    if (!target) return;
+    if (target.isBot) {
+      botRespondToOffer(offer);
+    } else {
+      setPendingOffer(offer);
+      addLog(`${human.name} offers to sell: ${offerData.desc}.`);
     }
   };
 
-  // incomingOffer: human is the SELLER and a bot/human wants to buy their hand
-  // incomingCounter: human is the BUYER and the bot countered their purchase offer
-  // incomingSellCounter: human is the SELLER and bot countered their sell offer (bot wants less)
-  const incomingOffer = pendingOffer && !pendingOffer.isCounter && pendingOffer.sellerId === curPlayer?.id && !curPlayer?.isBot ? pendingOffer : null;
-  const incomingCounter = pendingOffer && pendingOffer.isCounter && (
-    pendingOffer.buyerId === curPlayer?.id || pendingOffer.sellerId === curPlayer?.id
-  ) && !curPlayer?.isBot ? pendingOffer : null;
+  // incomingOffer: human is the SELLER and someone wants to buy their hand.
+  // incomingCounter: human is involved and the other side countered.
+  // Keyed to the HUMAN's id (not curPlayer) so offers reach the human no
+  // matter whose turn it currently is.
+  const incomingOffer = pendingOffer && !pendingOffer.isCounter && humanPlayer && pendingOffer.sellerId === humanPlayer.id ? pendingOffer : null;
+  const incomingCounter = pendingOffer && pendingOffer.isCounter && humanPlayer && (
+    pendingOffer.buyerId === humanPlayer.id || pendingOffer.sellerId === humanPlayer.id
+  ) ? pendingOffer : null;
   const isHumanTurn = phase === "betting" && isHumanSlot && !locked && !waitingForRoll && !curSlot?.skipped;
 
   if (showRules) return <RulesPage onClose={() => setShowRules(false)} />;
@@ -2804,6 +3309,9 @@ function Game({ cfg, onExit, onCareerComplete }) {
   }
 
   const seatPos = getSeatPositions(players, landscape);
+  // Mirror seat positions into a ref so non-render code (execBet, etc.) can
+  // launch chip flights from the correct seat coordinates.
+  seatPosRef.current = seatPos;
   const banner =
     phase==="ante" ? "Replenishing the pot…"
     : phase==="blindBet" ? "Blind betting…"
@@ -2855,7 +3363,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
             // table. Only allow exit at a safe point (round summary / game
             // over); otherwise tell the player to finish the round.
             if (isCareer && phase !== "roundEnd" && phase !== "over") {
-              showToast("Finish the round first — then Cash Out to save your chips.");
+              showToast("Finish the round first — then Leave Table to keep your chips.");
               return;
             }
             onExit();
@@ -2947,7 +3455,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
                 {/* Soft center light pool — neutral warm when a theme is set */}
                 <div style={{ position:"absolute", top:"34%", left:"50%", transform:"translate(-50%,-50%)", width:"70%", height:"42%", background: qpTheme ? "radial-gradient(ellipse, rgba(255,240,210,0.10) 0%, transparent 70%)" : "radial-gradient(ellipse, rgba(120,220,150,0.18) 0%, transparent 70%)", pointerEvents:"none" }}/>
                 {/* DOINK watermark — sits above the pot so it stays visible */}
-                <div style={{ position:"absolute", top:"26%", left:"50%", transform:"translate(-50%,-50%)", fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:landscape?"2.6rem":"3rem", color:"rgba(240,201,106,0.16)", letterSpacing:"0.08em", textShadow:"0 2px 0 rgba(0,0,0,0.2)", pointerEvents:"none", whiteSpace:"nowrap" }}>DOINK</div>
+                <div style={{ position:"absolute", top:"26%", left:"50%", transform:"translate(-50%,-50%)", fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:landscape?"2.6rem":"3rem", color:"rgba(240,201,106,0.34)", letterSpacing:"0.08em", textShadow:"0 2px 6px rgba(0,0,0,0.5), 0 0 20px rgba(212,168,67,0.25)", pointerEvents:"none", whiteSpace:"nowrap" }}>DOINK</div>
                 {/* Payout key — curved across the upper felt */}
                 <div style={{ position:"absolute", top:"11%", left:"50%", transform:"translateX(-50%)", display:"flex", gap:landscape?20:14, alignItems:"center", pointerEvents:"none", opacity:0.7 }}>
                   {[{label:"SPREAD",pay:"1:1",color:"rgba(245,237,216,0.9)"},{label:"BLIND",pay:"2:1",color:"#F0C96A"},{label:"DOINK",pay:"7:1",color:"#E74C3C"},{label:"MYTHICAL",pay:"12:1",color:"#C39BD3"}].map(({label,pay,color})=>(
@@ -3007,6 +3515,16 @@ function Game({ cfg, onExit, onCareerComplete }) {
           />
         )}
 
+        {/* Flying-chip animation layer — visual only, percent-positioned to
+            match the seat coordinate system. */}
+        <FlyingChips flights={chipFlights} />
+
+        {/* Visible deck on the felt — cards appear to deal from here. It
+            riffles during the shuffle at the start of each round. */}
+        <div style={{ position:"absolute", left:"68%", top:"42%", transform:"translate(-50%,-50%)", zIndex:14, pointerEvents:"none" }}>
+          <DeckStack shuffling={shuffling} landscape={landscape} />
+        </div>
+
         {/* ── Seats ── */}
         {/* Card scale shrinks with player count so cards on the sides still fit
             on-screen when the table is crowded.
@@ -3022,11 +3540,13 @@ function Game({ cfg, onExit, onCareerComplete }) {
           const outerClass = slotAnim==="win"?"win-blast":slotAnim==="doink"?"doink-explosion big-shake":slotAnim==="miss"?"miss-flash":"";
           const sz = landscape ? 30 : 36;
           const isInactiveAndPlaying = !isActiveSlot && (phase === "betting" || phase === "blindBet");
-          const cardScale = players.length <= 4 ? 1
-                          : players.length === 5 ? 0.86
-                          : players.length === 6 ? 0.76
-                          : players.length === 7 ? 0.68
-                          : 0.62;
+          const botCardScale = players.length <= 4 ? 0.92
+                          : players.length === 5 ? 0.82
+                          : players.length === 6 ? 0.74
+                          : 0.66;
+          // The human's hand is the one you act on — render it larger than
+          // the opponents' hands for clear readability at the bottom seat.
+          const cardScale = p.isBot ? botCardScale : 1.18;
           return (
             <div key={p.id} className={outerClass} style={{ position:"absolute", left:`${seatPos[p.id]?.x}%`, top:`${seatPos[p.id]?.y}%`, transform:`translate(-50%,-50%) scale(${isActiveSlot?1.08:isInactiveAndPlaying?0.92:1})`, display:"flex", flexDirection:"column", alignItems:"center", gap:4, zIndex:isActiveSlot?22:6, borderRadius:14, padding:3, opacity: isInactiveAndPlaying ? 0.55 : 1, transition:"opacity .35s ease, transform .35s ease" }}>
               <div style={{ position:"relative" }}>
@@ -3039,6 +3559,32 @@ function Game({ cfg, onExit, onCareerComplete }) {
                     ))}
                   </div>
                 )}
+                {/* Seat-state tag — a small label showing what this seat is
+                    doing. Only one shows at a time; priority top→bottom. */}
+                {(() => {
+                  // selling: this player has an open broadcast sell offer
+                  const isSelling = pendingSellOffer && pendingSellOffer.sellerId === p.id;
+                  // countered: a counter offer involves this player
+                  const isCountered = pendingOffer && pendingOffer.isCounter &&
+                    (pendingOffer.buyerId === p.id || pendingOffer.sellerId === p.id);
+                  // passed: folded for the round (and not the active seat)
+                  const isPassed = p.passed && p.done && !isActiveSlot && phase === "betting";
+                  const tag = isSelling ? { t:"FOR SALE", c:"#D4A843" }
+                            : isCountered ? { t:"COUNTER", c:"#C39BD3" }
+                            : isPassed ? { t:"PASSED", c:"rgba(245,237,216,0.55)" }
+                            : null;
+                  if (!tag || botThinking === p.id) return null;
+                  return (
+                    <div style={{
+                      position:"absolute", top:-9, left:"50%", transform:"translateX(-50%)",
+                      padding:"2px 7px", borderRadius:7, whiteSpace:"nowrap",
+                      background:"rgba(6,13,8,0.96)", border:`1px solid ${tag.c}`,
+                      fontSize:"0.54rem", fontWeight:800, letterSpacing:"0.1em",
+                      color:tag.c, boxShadow:"0 2px 6px rgba(0,0,0,0.7)",
+                      animation:"seatTagIn 0.25s ease both",
+                    }}>{tag.t}</div>
+                  );
+                })()}
               </div>
               <div style={{
                 background: isActiveSlot
@@ -3055,13 +3601,18 @@ function Game({ cfg, onExit, onCareerComplete }) {
                 <div style={{ fontSize:landscape?"0.58rem":"0.62rem", fontWeight:600, color: isActiveSlot ? "#F0C96A" : "rgba(245,237,216,0.72)", whiteSpace:"nowrap", maxWidth:80, overflow:"hidden", textOverflow:"ellipsis", letterSpacing:"0.04em", textTransform:"uppercase" }}>{p.name}</div>
                 <AnimatedNumber value={p.chips} duration={650} style={{ fontFamily:"'Playfair Display',serif", fontSize:landscape?"0.95rem":"1.05rem", color:"#F0C96A", fontWeight:700, lineHeight:1.1, marginTop:1, display:"block", textShadow: isActiveSlot ? "0 0 14px rgba(212,168,67,0.55)" : "none" }}/>
               </div>
-              {p.cards.length > 0 && (
-                <div style={{ display:"flex", gap:3, alignItems:"center" }}>
-                  {p.c1?<Card card={p.cards[0]} small glow={isActiveSlot&&!p.isBot} animClass="deal-anim" scale={cardScale}/>:<Placeholder small scale={cardScale}/>}
-                  {p.c2?<Card card={p.cards[1]} small glow={isActiveSlot&&!p.isBot} animClass="deal-anim" scale={cardScale}/>:<Placeholder small scale={cardScale}/>}
-                  {p.hitCard&&<><div style={{width:3,height:26*cardScale,borderLeft:"1px solid rgba(255,255,255,0.18)",margin:"0 2px"}}/><Card card={p.hitCard} small animClass="hit-anim" glow={slotAnim==="win"} scale={cardScale}/></>}
-                </div>
-              )}
+              {/* Permanent 3-card zone: two dealt cards + a reserved Doink
+                  card slot. The third slot holds a placeholder until the hit
+                  card is revealed, so the layout never shifts on reveal. */}
+              <div style={{ display:"flex", gap:3, alignItems:"center" }}>
+                {p.c1 && p.cards[0] ? <Card card={p.cards[0]} small glow={isActiveSlot&&!p.isBot} animClass="deal-anim" scale={cardScale}/> : <Placeholder small scale={cardScale}/>}
+                {p.c2 && p.cards[1] ? <Card card={p.cards[1]} small glow={isActiveSlot&&!p.isBot} animClass="deal-anim" scale={cardScale}/> : <Placeholder small scale={cardScale}/>}
+                {/* Doink-card slot — divider + third card position, always present */}
+                <div style={{ width:3, height:26*cardScale, borderLeft:"1px solid rgba(255,255,255,0.18)", margin:"0 1px" }}/>
+                {p.hitCard
+                  ? <Card card={p.hitCard} small animClass="hit-anim" glow={slotAnim==="win"} scale={cardScale}/>
+                  : <Placeholder small scale={cardScale} doinkSlot/>}
+              </div>
               {slotAnim && (
                 <div style={{ fontSize:slotAnim==="doink"?"0.78rem":"0.6rem", padding:slotAnim==="doink"?"4px 12px":"2px 8px", borderRadius:10, fontWeight:700, background:slotAnim==="win"?"rgba(39,174,96,0.2)":slotAnim==="doink"?"rgba(231,76,60,0.28)":"rgba(255,255,255,0.05)", border:slotAnim==="win"?"1.5px solid rgba(39,174,96,0.55)":slotAnim==="doink"?"2px solid rgba(231,76,60,0.75)":"1px solid transparent", color:slotAnim==="win"?"#27AE60":slotAnim==="doink"?"#E74C3C":slotAnim==="miss"?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.2)", textShadow:slotAnim==="doink"?"0 0 18px rgba(231,76,60,0.9)":slotAnim==="win"?"0 0 10px rgba(39,174,96,0.7)":"none" }}>
                   {slotAnim==="win"?"WIN":slotAnim==="doink"?"💥 DOINK!":slotAnim==="miss"?"MISS":"PASS"}
@@ -3202,9 +3753,15 @@ function Game({ cfg, onExit, onCareerComplete }) {
             {curSlot?.cards?.[1]?<Card card={curSlot.cards[1]} glow/>:<Placeholder/>}
           </div>
           <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap", marginBottom:8 }}>
-            <button onClick={()=>{setBetVal(0);setSheet("bet");}} disabled={cantBet} style={{...gBtn, opacity:cantBet?0.4:1}}>BET SPREAD</button>
+            {/* Spread bet needs a card to fall BETWEEN your two. A pair
+                (spread 0) or adjacent cards like Q-K (spread 1) have no
+                between — hide the spread button in those cases. */}
+            {slotSpread && slotSpread.v >= 2 &&
+              <button onClick={()=>{setBetVal(0);setSheet("bet");}} disabled={cantBet} style={{...gBtn, opacity:cantBet?0.4:1}}>BET SPREAD</button>}
             <button onClick={()=>{setBetVal(0);setSheet("doinkBet");}} disabled={cantBet} style={{...dBtn, opacity:cantBet?0.4:1}}>💥 DOINK BET</button>
             {slotSpread?.mythical&&<button onClick={()=>{setBetVal(0);setSheet("mythical");}} disabled={cantBet} style={{...pBtn, opacity:cantBet?0.4:1}}>✨ MYTHICAL</button>}
+            {/* Double Doink — only when the player holds a pair (spread 0). */}
+            {slotSpread?.v===0&&<button onClick={()=>{setBetVal(0);setSheet("doubledoink");}} disabled={cantBet} style={{...dBtn, background:"linear-gradient(145deg,#7A1212,#C0392B)", opacity:cantBet?0.4:1}}>💥💥 DOUBLE DOINK</button>}
             <button onClick={humanPass} style={sBtn}>PASS</button>
           </div>
           {cantBet && (
@@ -3233,7 +3790,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
         <div className="pop" style={{ flexShrink:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:29, background:"linear-gradient(0deg,rgba(2,8,14,0.99),rgba(2,8,14,0.92))", borderTop:"2px solid rgba(212,168,67,0.3)" }}>
           {(() => {
             const offer = incomingOffer || incomingCounter;
-            const humanIsSeller = offer.sellerId === curPlayer?.id;
+            const humanIsSeller = offer.sellerId === humanPlayer?.id;
             const otherPartyId = humanIsSeller ? offer.buyerId : offer.sellerId;
             const otherParty = players.find(p => p.id === otherPartyId);
             const headline = offer.isCounter
@@ -3303,7 +3860,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
         // Spread pays 1:1, so the winnings can equal the pot — max = min(chips, pot).
         const max = Math.min(curPlayer?.chips || 0, pot);
         return (
-        <Sheet title="Bet on Spread" subtitle={`If the hit card falls between yours — WIN. Pays 1:1. Max bet $${max} (can't win more than the pot).`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="Bet on Spread" subtitle={`If the hit card falls between yours — WIN. Pays 1:1. Max bet ◆${max} (can't win more than the pot).`} onClose={() => setSheet(null)} landscape={landscape}>
           <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
             <button onClick={() => humanBet("spread")} disabled={betVal===0} style={{ ...gBtn, opacity:betVal===0?0.4:1 }}>Bet ${betVal||""}</button>
@@ -3318,12 +3875,29 @@ function Game({ cfg, onExit, onCareerComplete }) {
         // so you can always take a swing even if the pot is small.
         const max = Math.min(curPlayer?.chips || 0, pot);
         return (
-        <Sheet title="💥 Doink Bet" subtitle={`Bet the hit card MATCHES one of yours. Pays 7× — but never more than the pot. Max bet $${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="💥 Doink Bet" subtitle={`Bet the hit card MATCHES one of yours. Pays 7× — but never more than the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
           {max <= 0
             ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>The pot is empty — nothing to win right now.</div>
             : <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>}
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
-            <button onClick={() => humanBet("doink")} disabled={betVal===0||max<=0} style={{ ...dBtn, opacity:(betVal===0||max<=0)?0.4:1 }}>Doink Bet ${betVal||""}</button>
+            <button onClick={() => humanBet("doink")} disabled={betVal===0||max<=0} style={{ ...dBtn, opacity:(betVal===0||max<=0)?0.4:1 }}>Doink Bet ◆{betVal||""}</button>
+            <button onClick={() => setSheet(null)} style={sBtn}>Cancel</button>
+          </div>
+        </Sheet>
+        );
+      })()}
+      {sheet==="doubledoink" && (() => {
+        // DOUBLE DOINK — only reachable when the player holds a pair. Bet that
+        // a third card of that rank lands. ~4% chance (2 of 50 unseen) → pays
+        // 18×, capped to the pot. Bet limited by chips and pot.
+        const max = Math.min(curPlayer?.chips || 0, pot);
+        return (
+        <Sheet title="💥💥 Double Doink" subtitle={`You hold a pair. Bet that a third card of that rank is the hit. Pays 18× — capped to the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
+          {max <= 0
+            ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>The pot is empty — nothing to win right now.</div>
+            : <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>}
+          <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
+            <button onClick={() => humanBet("doubledoink")} disabled={betVal===0||max<=0} style={{ ...dBtn, background:"linear-gradient(145deg,#7A1212,#C0392B)", opacity:(betVal===0||max<=0)?0.4:1 }}>Double Doink ◆{betVal||""}</button>
             <button onClick={() => setSheet(null)} style={sBtn}>Cancel</button>
           </div>
         </Sheet>
@@ -3334,12 +3908,12 @@ function Game({ cfg, onExit, onCareerComplete }) {
         // by chips and pot.
         const max = Math.min(curPlayer?.chips || 0, pot);
         return (
-        <Sheet title="✨ Mythical Split" subtitle={`Your cards are exactly 2 apart. Pays 12× — but never more than the pot. Max bet $${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="✨ Mythical Split" subtitle={`Your cards are exactly 2 apart. Pays 12× — but never more than the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
           {max <= 0
             ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>The pot is empty — nothing to win right now.</div>
             : <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>}
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
-            <button onClick={() => humanBet("mythical")} disabled={betVal===0||max<=0} style={{ ...pBtn, opacity:(betVal===0||max<=0)?0.4:1 }}>Mythical ${betVal||""}</button>
+            <button onClick={() => humanBet("mythical")} disabled={betVal===0||max<=0} style={{ ...pBtn, opacity:(betVal===0||max<=0)?0.4:1 }}>Mythical ◆{betVal||""}</button>
             <button onClick={() => setSheet(null)} style={sBtn}>Cancel</button>
           </div>
         </Sheet>
@@ -3359,8 +3933,11 @@ function Game({ cfg, onExit, onCareerComplete }) {
       )}
       {sheet==="trade" && tradeMode==="sell" && (
         <Sheet title="💰 Sell Your Hand" subtitle="Broadcast your terms to the table. The first player to accept buys your hand. They pay you upfront and play your cards. If they win, you get your % of their winnings." onClose={() => setSheet(null)} landscape={landscape}>
-          {curPlayer?.cards?.length === 2 && (() => {
-            const { quality, base } = handValue(curPlayer.cards[0], curPlayer.cards[1], pot);
+          {/* The seller is always the HUMAN — use humanPlayer, not curPlayer
+              (the current turn slot), so selling works regardless of whose
+              turn it is. */}
+          {humanPlayer?.cards?.length === 2 && (() => {
+            const { quality, base } = handValue(humanPlayer.cards[0], humanPlayer.cards[1], pot);
             const ql = quality<0.08?"Trash":quality<0.25?"Poor":quality<0.5?"Fair":"Good";
             const qlColor = quality<0.08?"#E74C3C":quality<0.25?"#E67E22":quality<0.5?"#F0C96A":"#27AE60";
             return (
@@ -3371,10 +3948,12 @@ function Game({ cfg, onExit, onCareerComplete }) {
               </div>
             );
           })()}
-          <OfferBuilder denoms={denoms} maxChips={curPlayer?.chips || 0} label="Broadcast Sell Offer" onCancel={() => setSheet(null)}
+          <OfferBuilder denoms={denoms} maxChips={humanPlayer?.chips || 0} label="Broadcast Sell Offer" onCancel={() => setSheet(null)}
             onConfirm={offerData => {
+              const human = playersRef.current.find(p => !p.isBot);
+              if (!human) return;
               const sellOffer = {
-                sellerId: curPlayer.id,
+                sellerId: human.id,
                 chips: offerData.chips,
                 pct: offerData.pct,
                 desc: offerData.desc,
@@ -3382,7 +3961,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
               };
               setPendingSellOffer(sellOffer);
               setSheet(null); setTradeMode(null);
-              addLog(`📢 ${curPlayer.name} sells hand to the table: ${offerData.desc}.`);
+              addLog(`📢 ${human.name} sells hand to the table: ${offerData.desc}.`);
               // Trigger bot evaluations
               setTimeout(() => evaluateBotSellResponses(sellOffer), 600);
             }}
@@ -3392,7 +3971,10 @@ function Game({ cfg, onExit, onCareerComplete }) {
       {sheet==="trade" && tradeMode==="buy" && (
         <Sheet title="🤝 Buy a Hand" subtitle="Offer chips (plus optional % of winnings) for a specific player's hand. You play both yours and theirs, in order." onClose={() => setSheet(null)} landscape={landscape}>
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            {players.filter(p => p.id !== curPlayer?.id && p.cards.length >= 2 && !p.done && !p.passed).map(target => {
+            {/* The buyer is always the HUMAN — never `curPlayer` (the current
+                turn slot), which may be a bot or null and caused bought hands
+                to land on the wrong player. Exclude only the human's own hand. */}
+            {players.filter(p => p.id !== humanPlayer?.id && p.cards.length >= 2 && !p.done && !p.passed).map(target => {
               const { quality, base } = handValue(target.cards[0], target.cards[1], pot);
               const ql=quality<0.08?"Trash":quality<0.25?"Poor":quality<0.5?"Fair":"Good";
               const qlColor=quality<0.08?"#E74C3C":quality<0.25?"#E67E22":quality<0.5?"#F0C96A":"#27AE60";
@@ -3405,11 +3987,11 @@ function Game({ cfg, onExit, onCareerComplete }) {
                       <div style={{ fontSize:"0.78rem", fontWeight:600, color:qlColor }}>{ql} hand · suggest ${base}</div>
                     </div>
                   </div>
-                  <OfferBuilder denoms={denoms} maxChips={curPlayer?.chips||0} label="Offer to Buy" onCancel={() => setSheet(null)} onConfirm={offerData => makeOffer(target.id, offerData, true)}/>
+                  <OfferBuilder denoms={denoms} maxChips={humanPlayer?.chips||0} label="Offer to Buy" onCancel={() => setSheet(null)} onConfirm={offerData => makeBuyOffer(target.id, offerData)}/>
                 </div>
               );
             })}
-            {players.filter(p => p.id !== curPlayer?.id && p.cards.length >= 2 && !p.done && !p.passed).length === 0 && (
+            {players.filter(p => p.id !== humanPlayer?.id && p.cards.length >= 2 && !p.done && !p.passed).length === 0 && (
               <div style={{ textAlign:"center", color:"rgba(245,237,216,0.38)", fontSize:"0.9rem", padding:24 }}>No hands available to buy right now.</div>
             )}
           </div>
@@ -3417,13 +3999,13 @@ function Game({ cfg, onExit, onCareerComplete }) {
       )}
       {sheet==="counter"&&(incomingOffer||incomingCounter)&&(
         <Sheet title="⚖️ Counter Offer" subtitle={`Countering ${players.find(p=>p.id===(incomingOffer||incomingCounter).buyerId)?.name}'s offer`} onClose={() => setSheet(null)} landscape={landscape}>
-          <OfferBuilder denoms={denoms} maxChips={curPlayer?.chips||0} label="Send Counter" onCancel={() => setSheet(null)}
+          <OfferBuilder denoms={denoms} maxChips={humanPlayer?.chips||0} label="Send Counter" onCancel={() => setSheet(null)}
             onConfirm={offerData => {
               const orig=incomingOffer||incomingCounter;
               const counter={...orig,chips:offerData.chips,pct:offerData.pct,desc:offerData.desc,kind:offerData.kind,isCounter:true};
-              addLog(`${curPlayer?.name} counters: ${offerData.desc}.`);
+              addLog(`${humanPlayer?.name} counters: ${offerData.desc}.`);
               setSheet(null);
-              const otherPartyId=orig.buyerId===curPlayer?.id?orig.sellerId:orig.buyerId;
+              const otherPartyId=orig.buyerId===humanPlayer?.id?orig.sellerId:orig.buyerId;
               const otherParty=players.find(p=>p.id===otherPartyId);
               if(otherParty?.isBot){
                 const sellerForVal=players.find(p=>p.id===orig.sellerId);
@@ -3453,6 +4035,7 @@ function Game({ cfg, onExit, onCareerComplete }) {
       )}
       {replenishFlash && <ReplenishOverlay />}
       {doinkFlash && <DoinkFullScreen name={doinkFlash} />}
+      {mythicalFlash && <MythicalFullScreen name={mythicalFlash} />}
     </div>
   );
 }
@@ -3481,7 +4064,7 @@ function Tutorial({ onClose }) {
     {
       icon: "🎰",
       title: "Bet Types",
-      body: "Spread Bet — bet between. Pays 1:1.\n💥 Doink Bet — bet on a MATCH. Pays 7:1.\n✨ Mythical Split — cards exactly 2 apart. The middle card pays 12:1.\n🎰 Blind Bet — before cards dealt. Pays 2:1.",
+      body: "Spread Bet — bet between. Pays 1:1.\n💥 Doink Bet — bet on a MATCH. Pays 7:1.\n💥💥 Double Doink — hold a pair, bet a third of that rank. Pays 18:1.\n✨ Mythical Split — cards exactly 2 apart. The middle card pays 12:1.\n🎰 Blind Bet — before cards dealt. Pays 2:1.",
     },
     {
       icon: "🤝",
@@ -3491,7 +4074,7 @@ function Tutorial({ onClose }) {
     {
       icon: "♻️",
       title: "Replenish",
-      body: "When the pot hits $0, everyone replenishes — pays back in — and play continues. The game keeps going until someone busts.\n\nReady?",
+      body: "When the pot hits ◆0, everyone replenishes — pays back in — and play continues. The game keeps going until someone busts.\n\nReady?",
     },
   ];
   const s = steps[step];
@@ -3533,13 +4116,13 @@ function Tutorial({ onClose }) {
 // ─────────────────────────────────────────────────────────
 const UNLOCK_REWARDS = {
   4:  { title: "Backroom Table Unlocked",  themeName: "Backroom Blue Felt",
-        rewards: ["Backroom Blue felt", "Backroom Matte chips", "Black Label card back", "4-bot games", "$250 buy-in & replenish", "New avatars: Backroom Regular, Sunglasses"] },
+        rewards: ["Backroom Blue felt", "Backroom Matte chips", "Black Label card back", "4-bot games", "◆250 starting chips & replenish", "New avatars: Backroom Regular, Sunglasses"] },
   9:  { title: "Riverboat Room Unlocked",  themeName: "Riverboat Red Felt",
-        rewards: ["Riverboat Red felt", "Riverboat Brass chips", "Riverboat Crest card back", "5-bot games", "$500 buy-in & replenish", "New avatars: Riverboat Gambler, Mustache"] },
-  16: { title: "High Roller Pit Unlocked", themeName: "High Roller Black Felt",
-        rewards: ["High Roller Black felt", "High Roller Premium chips", "High Roller Gold card back", "6-bot games", "$1,000 buy-in & replenish", "New avatars: High Roller, Black Hat"] },
+        rewards: ["Riverboat Red felt", "Riverboat Brass chips", "Riverboat Crest card back", "5-bot games", "◆500 starting chips & replenish", "New avatars: Riverboat Captain, Mustache"] },
+  16: { title: "High Stakes Room Unlocked", themeName: "Elite Black Felt",
+        rewards: ["Elite Black felt", "Elite Premium chips", "Elite Gold card back", "6-bot games", "◆1,000 starting chips & replenish", "New avatars: The Regular, Black Hat"] },
   25: { title: "Mythic Invitational Unlocked", themeName: "Mythic Purple Felt",
-        rewards: ["Mythic Purple felt", "Mythic Gold chips", "Mythic Crown card back", "7-bot games", "$2,500 buy-in & replenish", "New avatars: Mythic Shark, Gold Suit, Final Boss"] },
+        rewards: ["Mythic Purple felt", "Mythic Gold chips", "Mythic Crown card back", "7-bot games", "◆2,500 starting chips & replenish", "New avatars: Mythic Shark, Gold Suit, Final Boss"] },
 };
 
 function UnlockRewardPopup({ milestone, onClose }) {
@@ -3576,7 +4159,7 @@ function UnlockRewardPopup({ milestone, onClose }) {
 // ─────────────────────────────────────────────────────────
 // HOME SCREEN — chooses between Career, Quick Play, Tutorial
 // ─────────────────────────────────────────────────────────
-function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, onSignOut, onLeaderboard }) {
+function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, isGuest, onSignOut, onSignIn, onLeaderboard }) {
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)" }}>
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:`calc(env(safe-area-inset-top) + 40px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
@@ -3596,6 +4179,7 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, onSignOut, o
           }}>
             <span>♠ Career Mode</span>
             {hasCareer && <span style={{ fontSize:"0.7rem", opacity:0.7, fontWeight:600 }}>Continue</span>}
+            {isGuest && <span style={{ fontSize:"0.7rem", opacity:0.7, fontWeight:600 }}>Sign in</span>}
           </button>
           <button onClick={onQuickPlay} style={{
             padding:"18px 24px", borderRadius:18,
@@ -3625,7 +4209,16 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, onSignOut, o
           }}>
             📖 Tutorial
           </button>
-          {onSignOut && (
+          {isGuest && onSignIn && (
+            <button onClick={onSignIn} style={{
+              padding:"12px 22px", borderRadius:12, marginTop:4,
+              background:"rgba(212,168,67,0.1)", border:"1px solid rgba(212,168,67,0.35)",
+              color:"#F0C96A", fontSize:"0.9rem", fontWeight:600, cursor:"pointer",
+            }}>
+              Sign In to Save Progress
+            </button>
+          )}
+          {!isGuest && onSignOut && (
             <button onClick={onSignOut} style={{
               padding:"10px 22px", borderRadius:12, marginTop:4,
               background:"transparent", border:"none",
@@ -3634,6 +4227,11 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, onSignOut, o
               Sign Out
             </button>
           )}
+          {/* App-store readiness: fictional-chips disclaimer in the footer. */}
+          <p style={{ fontSize:"0.68rem", color:"rgba(245,237,216,0.32)", textAlign:"center", lineHeight:1.6, marginTop:14, padding:"0 8px" }}>
+            DOINK uses fictional play chips only. No real money, prizes,
+            cash-out, or redeemable value.
+          </p>
         </div>
       </div>
     </div>
@@ -3667,8 +4265,8 @@ function CareerHome({ career, onPlay, onClaimDaily, onResetCareer, onBack, onLea
           boxShadow:"0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(240,201,106,0.35), 0 0 30px rgba(212,168,67,0.18)",
           marginBottom:16,
         }}>
-          <div style={{ fontSize:"0.62rem", letterSpacing:"0.24em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>Bankroll</div>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"3rem", color:"#F0C96A", fontWeight:900, lineHeight:1, textShadow:"0 0 32px rgba(212,168,67,0.6)" }}>${career.bankroll.toLocaleString()}</div>
+          <div style={{ fontSize:"0.62rem", letterSpacing:"0.24em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>Chip Stack</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"3rem", color:"#F0C96A", fontWeight:900, lineHeight:1, textShadow:"0 0 32px rgba(212,168,67,0.6)" }}>◆{career.bankroll.toLocaleString()}</div>
           <div style={{ marginTop:14, display:"flex", justifyContent:"center", gap:14, fontSize:"0.78rem", color:"rgba(245,237,216,0.6)" }}>
             <span><span style={{ color:"#D4A843", fontWeight:700 }}>Lvl {career.level}</span></span>
             <span style={{ color:"rgba(255,255,255,0.2)" }}>·</span>
@@ -3696,9 +4294,9 @@ function CareerHome({ career, onPlay, onClaimDaily, onResetCareer, onBack, onLea
               <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color: dailyEligible?"rgba(39,174,96,0.85)":"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase" }}>Daily Stake</div>
               <div style={{ fontSize:"0.85rem", color:"rgba(245,237,216,0.7)", marginTop:4, lineHeight:1.45 }}>
                 {dailyEligible
-                  ? `You can claim $${dailyAmount} to top up to $${career.dailyCap}.`
+                  ? `You can claim ◆${dailyAmount} to top up to ◆${career.dailyCap}.`
                   : career.bankroll >= career.dailyCap
-                    ? `Bankroll's above $${career.dailyCap}. Come back if you bust.`
+                    ? `Your chip stack is above ◆${career.dailyCap}. Come back if you run low.`
                     : `Already claimed today. Resets tomorrow.`}
               </div>
             </div>
@@ -3714,12 +4312,12 @@ function CareerHome({ career, onPlay, onClaimDaily, onResetCareer, onBack, onLea
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
             <StatCell label="Sessions" value={career.sessionsPlayed}/>
             <StatCell label="Sessions Won" value={career.sessionsWon}/>
-            <StatCell label="Total Profit" value={`${career.totalCareerProfit>=0?"+":"−"}$${Math.abs(career.totalCareerProfit).toLocaleString()}`} color={career.totalCareerProfit>=0?"#27AE60":"#E74C3C"}/>
+            <StatCell label="Total Profit" value={`${career.totalCareerProfit>=0?"+":"−"}◆${Math.abs(career.totalCareerProfit).toLocaleString()}`} color={career.totalCareerProfit>=0?"#27AE60":"#E74C3C"}/>
             <StatCell label="Best Streak" value={career.bestStreak}/>
             <StatCell label="Doink Bets Hit" value={career.doinkBetsHit}/>
             <StatCell label="Mythicals" value={career.mythicalHits}/>
-            <StatCell label="Biggest Win" value={`$${career.biggestPotWon.toLocaleString()}`}/>
-            <StatCell label="Worst Doink" value={`$${career.biggestDoinkLoss.toLocaleString()}`} color="#E74C3C"/>
+            <StatCell label="Biggest Win" value={`◆${career.biggestPotWon.toLocaleString()}`}/>
+            <StatCell label="Worst Doink" value={`◆${career.biggestDoinkLoss.toLocaleString()}`} color="#E74C3C"/>
           </div>
         </div>
 
@@ -3772,43 +4370,48 @@ function CareerTableSelect({ career, onSelect, onBack }) {
         <div style={{ width:"100%", maxWidth:480, display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
           <button onClick={onBack} style={{ ...sBtn, padding:"8px 14px", fontSize:"0.85rem" }}>← Back</button>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#D4A843", fontWeight:700 }}>Choose a Table</div>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"0.95rem", color:"#F0C96A", fontWeight:700 }}>${career.bankroll}</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"0.95rem", color:"#F0C96A", fontWeight:700 }}>◆{career.bankroll}</div>
         </div>
         <div style={{ width:"100%", maxWidth:480, display:"flex", flexDirection:"column", gap:12 }}>
           {CAREER_TABLES.map(t => {
+            const unlocked = tableIsUnlocked(t, career);
             const playable = tableIsPlayable(t, career);
-            const reason = career.level < t.unlockLevel
-              ? `Reach level ${t.unlockLevel}`
-              : career.bankroll < Math.max(t.buyIn, t.minBankroll)
-                ? `Need $${Math.max(t.buyIn, t.minBankroll)} bankroll`
+            // Three states: locked (level too low), unlocked-but-can't-afford
+            // (need chips for the buy-in), and playable.
+            const reason = !unlocked
+              ? `Reach level ${t.unlockLevel} to unlock`
+              : !playable
+                ? `Need ◆${t.buyIn} to buy in`
                 : null;
             return (
               <div key={t.id} style={{
                 background: playable
                   ? "linear-gradient(165deg,rgba(40,28,8,0.55),rgba(8,16,10,0.85))"
                   : "rgba(255,255,255,0.025)",
-                border: playable ? "1.5px solid rgba(212,168,67,0.45)" : "1px solid rgba(255,255,255,0.06)",
+                border: playable ? "1.5px solid rgba(212,168,67,0.45)"
+                  : unlocked ? "1px solid rgba(212,168,67,0.2)"
+                  : "1px solid rgba(255,255,255,0.06)",
                 borderRadius:16, padding:"16px 18px",
-                opacity: playable ? 1 : 0.55,
+                opacity: playable ? 1 : unlocked ? 0.8 : 0.55,
                 boxShadow: playable ? "0 8px 24px rgba(0,0,0,0.5)" : "none",
               }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:14, marginBottom:8 }}>
                   <div style={{ minWidth:0, flex:1 }}>
-                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.1rem", color: playable?"#F0C96A":"rgba(245,237,216,0.55)", fontWeight:700 }}>{t.name}</div>
+                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.1rem", color: playable?"#F0C96A":unlocked?"rgba(240,201,106,0.7)":"rgba(245,237,216,0.55)", fontWeight:700 }}>{t.name}</div>
                     <div style={{ fontSize:"0.78rem", color:"rgba(245,237,216,0.5)", marginTop:2, lineHeight:1.4 }}>{t.subtitle}</div>
                   </div>
-                  <div style={{ fontSize:"0.6rem", letterSpacing:"0.12em", color: playable?"rgba(212,168,67,0.6)":"rgba(245,237,216,0.3)", textTransform:"uppercase", fontWeight:700, flexShrink:0, textAlign:"right" }}>
-                    Lvl {t.unlockLevel}+
+                  <div style={{ fontSize:"0.6rem", letterSpacing:"0.12em", color: unlocked?"rgba(212,168,67,0.6)":"rgba(245,237,216,0.3)", textTransform:"uppercase", fontWeight:700, flexShrink:0, textAlign:"right" }}>
+                    {unlocked ? "Unlocked" : `Lvl ${t.unlockLevel}+`}
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:10 }}>
-                  <Pillstat label="Buy-in" value={`$${t.buyIn}`}/>
-                  <Pillstat label="Ante" value={`$${t.ante}`}/>
+                  <Pillstat label="Starting" value={`◆${t.buyIn}`}/>
+                  <Pillstat label="Ante" value={`◆${t.ante}`}/>
                   <Pillstat label="Bots" value={t.bots}/>
                 </div>
                 {playable
-                  ? <button onClick={() => onSelect(t)} style={{ ...gBtn, width:"100%", padding:"12px", fontSize:"0.95rem" }}>{`Start — Buy in $${t.buyIn}`}</button>
-                  : <div style={{ padding:"10px 14px", background:"rgba(0,0,0,0.3)", borderRadius:10, color:"rgba(231,76,60,0.75)", fontSize:"0.78rem", fontWeight:600, textAlign:"center" }}>🔒 {reason}</div>
+                  ? <button onClick={() => onSelect(t)} style={{ ...gBtn, width:"100%", padding:"12px", fontSize:"0.95rem" }}>{`Start — Buy in ◆${t.buyIn}`}</button>
+                  : <div style={{ padding:"10px 14px", background:"rgba(0,0,0,0.3)", borderRadius:10, color: unlocked?"rgba(245,237,216,0.6)":"rgba(231,76,60,0.75)", fontSize:"0.78rem", fontWeight:600, textAlign:"center" }}>{unlocked ? "💰 " : "🔒 "}{reason}</div>
                 }
               </div>
             );
@@ -3848,23 +4451,23 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, onContinue }) 
           <div style={{ textAlign:"center", marginBottom:22 }}>
             <div style={{ fontSize:"0.62rem", letterSpacing:"0.28em", color:"rgba(212,168,67,0.6)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>{result.tableName}</div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2rem", color: busted?"#E74C3C":won?"#27AE60":"#F0C96A", fontWeight:900, lineHeight:1, textShadow:`0 0 28px ${busted?"rgba(231,76,60,0.55)":won?"rgba(39,174,96,0.55)":"rgba(212,168,67,0.55)"}` }}>
-              {busted ? "Busted Out" : won ? `Up $${net}` : net < 0 ? `Down $${Math.abs(net)}` : "Broke Even"}
+              {busted ? "Busted Out" : won ? `Up ◆${net}` : net < 0 ? `Down ◆${Math.abs(net)}` : "Broke Even"}
             </div>
           </div>
 
           {/* Net / chips */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14 }}>
             <div style={card}>
-              <div style={{ fontSize:"0.58rem", letterSpacing:"0.14em", color:"rgba(245,237,216,0.45)", fontWeight:600, textTransform:"uppercase" }}>Buy-in</div>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color:"#F0C96A", fontWeight:700, marginTop:2 }}>${result.buyIn}</div>
+              <div style={{ fontSize:"0.58rem", letterSpacing:"0.14em", color:"rgba(245,237,216,0.45)", fontWeight:600, textTransform:"uppercase" }}>Starting</div>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color:"#F0C96A", fontWeight:700, marginTop:2 }}>◆{result.buyIn}</div>
             </div>
             <div style={card}>
-              <div style={{ fontSize:"0.58rem", letterSpacing:"0.14em", color:"rgba(245,237,216,0.45)", fontWeight:600, textTransform:"uppercase" }}>Cashed Out</div>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color:"#F0C96A", fontWeight:700, marginTop:2 }}>${result.cashOut}</div>
+              <div style={{ fontSize:"0.58rem", letterSpacing:"0.14em", color:"rgba(245,237,216,0.45)", fontWeight:600, textTransform:"uppercase" }}>Final Chips</div>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color:"#F0C96A", fontWeight:700, marginTop:2 }}>◆{result.cashOut}</div>
             </div>
             <div style={card}>
               <div style={{ fontSize:"0.58rem", letterSpacing:"0.14em", color:"rgba(245,237,216,0.45)", fontWeight:600, textTransform:"uppercase" }}>Net</div>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color: net>0?"#27AE60":net<0?"#E74C3C":"#F0C96A", fontWeight:700, marginTop:2 }}>{net>=0?`+$${net}`:`−$${Math.abs(net)}`}</div>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color: net>0?"#27AE60":net<0?"#E74C3C":"#F0C96A", fontWeight:700, marginTop:2 }}>{net>=0?`+◆${net}`:`−◆${Math.abs(net)}`}</div>
             </div>
           </div>
 
@@ -3886,11 +4489,11 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, onContinue }) 
             border:"1.5px solid rgba(212,168,67,0.4)",
             borderRadius:14, padding:"12px 16px", marginBottom:18, textAlign:"center",
           }}>
-            <div style={{ fontSize:"0.6rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.6)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>Bankroll</div>
+            <div style={{ fontSize:"0.6rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.6)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>Chip Stack</div>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-              <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.2rem", color:"rgba(245,237,216,0.55)", fontWeight:600 }}>${oldBankroll.toLocaleString()}</span>
+              <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.2rem", color:"rgba(245,237,216,0.55)", fontWeight:600 }}>◆{oldBankroll.toLocaleString()}</span>
               <span style={{ fontSize:"0.9rem", color:"rgba(212,168,67,0.6)" }}>→</span>
-              <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.6rem", color:"#F0C96A", fontWeight:900, textShadow:"0 0 18px rgba(212,168,67,0.5)" }}>${newBankroll.toLocaleString()}</span>
+              <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.6rem", color:"#F0C96A", fontWeight:900, textShadow:"0 0 18px rgba(212,168,67,0.5)" }}>◆{newBankroll.toLocaleString()}</span>
             </div>
           </div>
 
@@ -3904,7 +4507,7 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, onContinue }) 
 // ─────────────────────────────────────────────────────────
 // PROFILE / STATS — change display name + full career stats
 // ─────────────────────────────────────────────────────────
-function ProfileScreen({ career, onRename, onBack }) {
+function ProfileScreen({ career, onRename, onBack, onOpenLegal, onOpenAchievements }) {
   const [name, setName] = useState(career.playerName || "Player");
   const [saved, setSaved] = useState(false);
   const lvlInfo = xpToNextLevel(career.xp);
@@ -3930,9 +4533,9 @@ function ProfileScreen({ career, onRename, onBack }) {
     { label: "Best Streak",    value: career.bestStreak },
     { label: "Current Streak", value: career.currentStreak },
     { label: "Rounds Played",  value: career.totalRoundsPlayed },
-    { label: "Total Profit",   value: `${career.totalCareerProfit>=0?"+":"−"}$${Math.abs(career.totalCareerProfit).toLocaleString()}`, color: career.totalCareerProfit>=0?"#27AE60":"#E74C3C" },
-    { label: "Biggest Win",    value: `$${career.biggestPotWon.toLocaleString()}` },
-    { label: "Worst Doink",    value: `$${career.biggestDoinkLoss.toLocaleString()}`, color:"#E74C3C" },
+    { label: "Total Profit",   value: `${career.totalCareerProfit>=0?"+":"−"}◆${Math.abs(career.totalCareerProfit).toLocaleString()}`, color: career.totalCareerProfit>=0?"#27AE60":"#E74C3C" },
+    { label: "Biggest Win",    value: `◆${career.biggestPotWon.toLocaleString()}` },
+    { label: "Worst Doink",    value: `◆${career.biggestDoinkLoss.toLocaleString()}`, color:"#E74C3C" },
     { label: "Doink Bets Hit", value: career.doinkBetsHit },
     { label: "Mythicals Hit",  value: career.mythicalHits },
     { label: "Hands Bought",   value: career.handsBought },
@@ -3996,6 +4599,51 @@ function ProfileScreen({ career, onRename, onBack }) {
             ))}
           </div>
         </div>
+
+        {/* Achievements entry */}
+        <button onClick={() => onOpenAchievements && onOpenAchievements()} style={{
+          ...card, width:"100%", maxWidth:440, marginTop:14, cursor:"pointer",
+          display:"flex", justifyContent:"space-between", alignItems:"center",
+          border:"1px solid rgba(212,168,67,0.3)", textAlign:"left",
+        }}>
+          <div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", color:"#F0C96A", fontWeight:700 }}>Achievements</div>
+            <div style={{ fontSize:"0.78rem", color:"rgba(245,237,216,0.5)", marginTop:2 }}>
+              {(career?.achievements || []).length} unlocked
+            </div>
+          </div>
+          <span style={{ fontSize:"1.3rem", color:"rgba(212,168,67,0.6)" }}>›</span>
+        </button>
+
+        {/* About & Legal */}
+        <div style={{ ...card, width:"100%", maxWidth:440, marginTop:14 }}>
+          <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase", marginBottom:10 }}>About DOINK</div>
+          <p style={{ fontSize:"0.82rem", lineHeight:1.6, color:"rgba(245,237,216,0.7)", margin:"0 0 12px" }}>
+            DOINK is a fictional play-chip card strategy game. No real money is wagered,
+            won, lost, deposited, withdrawn, or redeemed. Chips, scores, levels, unlocks,
+            and leaderboard rankings are fictional and for entertainment only.
+          </p>
+          <div style={{ display:"flex", flexDirection:"column", gap:1, borderRadius:10, overflow:"hidden", border:"1px solid rgba(255,255,255,0.06)" }}>
+            {[
+              { label:"Privacy Policy",   page:"privacy" },
+              { label:"Terms of Use",     page:"terms" },
+              { label:"Account Deletion", page:"accountDeletion" },
+              { label:"Support",          page:"support" },
+            ].map(row => (
+              <button key={row.label} onClick={() => onOpenLegal && onOpenLegal(row.page)} style={{
+                display:"flex", justifyContent:"space-between", alignItems:"center",
+                padding:"12px 13px", background:"rgba(0,0,0,0.3)", border:"none",
+                cursor:"pointer", width:"100%", textAlign:"left",
+              }}>
+                <span style={{ fontSize:"0.88rem", color:"rgba(245,237,216,0.85)", fontWeight:500 }}>{row.label}</span>
+                <span style={{ fontSize:"0.9rem", color:"rgba(212,168,67,0.6)" }}>›</span>
+              </button>
+            ))}
+          </div>
+          <p style={{ fontSize:"0.68rem", color:"rgba(245,237,216,0.35)", margin:"10px 0 0", lineHeight:1.5 }}>
+            {DEV_NAME} · v1.0
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -4017,17 +4665,37 @@ export { createDefaultCareer, normalizeCareer, CAREER_KEY };
 //     onSignOut      — sign the user out
 //     onShowLeaderboard — open the leaderboard screen
 //     displayName    — the signed-in user's display name
-export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, displayName }) {
+export function GameRoot({ career, setCareer, isGuest, onSignOut, onRequireSignIn, onShowLeaderboard, onTutorialTrigger, displayName }) {
   // Route state: "home" | "tutorial" | "quickSetup" | "careerHome" | "careerTables" | "quickGame" | "careerGame" | "careerSummary"
   const [route, setRoute] = useState("home");
   const [cfg, setCfg] = useState(null);                    // Game cfg for either mode
   const [pendingSummary, setPendingSummary] = useState(null); // { result, oldBankroll, newBankroll }
+  // Queue of achievements unlocked but not yet shown as a toast.
+  const [achQueue, setAchQueue] = useState([]);
 
   useEffect(() => {
     const el = document.createElement("style");
     el.textContent = GLOBAL_CSS;
     document.head.appendChild(el);
     return () => document.head.removeChild(el);
+  }, []);
+
+  // ── Achievement event handler ────────────────────────────
+  // Central entry point: gameplay and career flow call emitAchievement(event,
+  // payload). It runs the progress engine, persists progress + unlocks into
+  // the career (which auto-syncs to Firestore), and queues popups.
+  const emitAchievement = useCallback((eventName, payload) => {
+    setCareer(c => {
+      if (!c) return c;
+      const { progress, unlocked, newlyUnlocked } = applyAchievementEvent(c, eventName, payload || {});
+      if (newlyUnlocked.length) {
+        setAchQueue(q => [...q, ...newlyUnlocked]);
+      }
+      return { ...c, achievementProgress: progress, achievements: unlocked };
+    });
+  }, [setCareer]);
+  const dismissAchToast = useCallback((id) => {
+    setAchQueue(q => q.filter(a => a.id !== id));
   }, []);
 
   // ── Unlock reward popup ──────────────────────────────────
@@ -4046,12 +4714,18 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
 
   // ── Career flow ─────────────────────────────────────────
   const enterCareer = () => {
+    // Career Mode needs an account (cloud save + leaderboard). A guest is
+    // routed to the sign-in prompt instead.
+    if (isGuest) { onRequireSignIn?.(); return; }
+    // First entry to Career also triggers the one-time tutorial.
+    onTutorialTrigger?.();
     if (!career) setCareer(createDefaultCareer(displayName));
     setRoute("careerHome");
+    emitAchievement(EVENTS.CAREER_STARTED, {});
   };
   const handleClaimDaily = () => setCareer(c => claimDaily(c));
   const handleResetCareer = () => {
-    if (typeof window !== "undefined" && !window.confirm("Reset your career? Bankroll and stats will be wiped.")) return;
+    if (typeof window !== "undefined" && !window.confirm("Reset your career? Your chip stack and stats will be wiped.")) return;
     setCareer(createDefaultCareer(displayName));
   };
   const startCareerTable = (table) => {
@@ -4091,6 +4765,17 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
     });
     setRoute("careerSummary");
     setCfg(null);
+    // Achievement events from a finished career session.
+    emitAchievement(EVENTS.SESSION_COMPLETED, {});
+    emitAchievement(EVENTS.LEADERBOARD_POSTED, {}); // career sessions post to the leaderboard
+    // Level milestones — emit the post-session level (progressKind:"max").
+    setCareer(c => {
+      if (c) {
+        emitAchievement(EVENTS.CAREER_LEVEL_REACHED, { value: c.level });
+        emitAchievement(EVENTS.WIN_STREAK, { value: c.bestStreak || 0 });
+      }
+      return c;
+    });
   };
 
   // ── Quick play flow ─────────────────────────────────────
@@ -4101,6 +4786,9 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
   const exitQuickGame = () => { setCfg(null); setRoute("home"); };
 
   // ── Router ──────────────────────────────────────────────
+  // Wrapped in an IIFE so the achievement toast overlay (below) can render
+  // on top of whatever screen is active, without touching every route.
+  const screen = (() => {
   if (route === "tutorial") return <Tutorial onClose={() => setRoute("home")} />;
 
   if (route === "quickSetup") return (
@@ -4114,7 +4802,7 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
   );
 
   if (route === "quickGame" && cfg) return (
-    <Game key={cfg ? JSON.stringify(cfg) : "g"} cfg={cfg} onExit={exitQuickGame} />
+    <Game key={cfg ? JSON.stringify(cfg) : "g"} cfg={cfg} onExit={exitQuickGame} onAchievement={emitAchievement} />
   );
 
   if (route === "careerHome" && career) return (
@@ -4139,8 +4827,17 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
       career={career}
       onRename={(newName) => setCareer(c => ({ ...c, playerName: newName }))}
       onBack={() => setRoute("careerHome")}
+      onOpenLegal={(page) => setRoute(page)}
+      onOpenAchievements={() => setRoute("achievements")}
     />
   );
+
+  // Legal / about screens — reachable from the Profile screen.
+  if (route === "privacy")          return <PrivacyPolicy   onBack={() => setRoute("profile")} />;
+  if (route === "terms")            return <TermsOfUse      onBack={() => setRoute("profile")} />;
+  if (route === "accountDeletion")  return <AccountDeletion onBack={() => setRoute("profile")} />;
+  if (route === "support")          return <SupportPage     onBack={() => setRoute("profile")} />;
+  if (route === "achievements" && career) return <AchievementsScreen career={career} onBack={() => setRoute("profile")} />;
 
   if (route === "careerTables" && career) return (
     <CareerTableSelect
@@ -4156,6 +4853,7 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
       cfg={cfg}
       onExit={() => { setCfg(null); setRoute("careerHome"); }}
       onCareerComplete={onCareerComplete}
+      onAchievement={emitAchievement}
     />
   );
 
@@ -4172,11 +4870,22 @@ export function GameRoot({ career, setCareer, onSignOut, onShowLeaderboard, disp
   return (
     <HomeScreen
       hasCareer={!!career}
+      isGuest={isGuest}
       onCareer={enterCareer}
-      onQuickPlay={() => setRoute("quickSetup")}
+      onQuickPlay={() => { onTutorialTrigger?.(); setRoute("quickSetup"); }}
       onTutorial={() => setRoute("tutorial")}
       onSignOut={onSignOut}
+      onSignIn={onRequireSignIn}
       onLeaderboard={onShowLeaderboard}
     />
+  );
+  })();
+
+  // Active screen + the global achievement toast overlay.
+  return (
+    <>
+      {screen}
+      <AchievementToasts queue={achQueue} onDismiss={dismissAchToast} />
+    </>
   );
 }

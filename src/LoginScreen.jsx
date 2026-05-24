@@ -4,7 +4,7 @@
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "./firebase.js";
 
-export default function LoginScreen({ error }) {
+export default function LoginScreen({ error, reason, onBack }) {
   const signIn = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
@@ -37,7 +37,7 @@ export default function LoginScreen({ error }) {
 
       <div style={{ width: "100%", maxWidth: 320, textAlign: "center" }}>
         <p style={{ color: "rgba(245,237,216,0.6)", fontSize: "0.92rem", lineHeight: 1.6, marginBottom: 24 }}>
-          Sign in to save your career and climb the leaderboard with your friends.
+          {reason || "Sign in to save your career and climb the leaderboard with your friends."}
         </p>
         <button onClick={signIn} style={{
           width: "100%", padding: "16px 24px", borderRadius: 16, border: "none",
@@ -48,9 +48,22 @@ export default function LoginScreen({ error }) {
         }}>
           Sign in with Google
         </button>
+        {onBack && (
+          <button onClick={onBack} style={{
+            width: "100%", padding: "13px 24px", borderRadius: 14, marginTop: 12,
+            background: "transparent", border: "1px solid rgba(255,255,255,0.15)",
+            color: "rgba(245,237,216,0.6)", fontSize: "0.9rem", fontWeight: 500, cursor: "pointer",
+          }}>
+            ← Back to Quick Play
+          </button>
+        )}
         {error && (
           <p style={{ color: "#E74C3C", fontSize: "0.82rem", marginTop: 16 }}>{error}</p>
         )}
+        <p style={{ color: "rgba(245,237,216,0.4)", fontSize: "0.72rem", lineHeight: 1.6, marginTop: 28 }}>
+          DOINK uses fictional play chips only. No real money, prizes,
+          cash-out, or redeemable value.
+        </p>
       </div>
     </div>
   );

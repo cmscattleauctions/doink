@@ -5,10 +5,10 @@ import { useState, useEffect } from "react";
 import { loadLeaderboard } from "./cloud.js";
 
 const TABS = [
-  { id: "bankroll",          label: "Bankroll",      key: "bankroll",          fmt: v => `$${(v||0).toLocaleString()}`,                     desc: "Biggest bankroll" },
-  { id: "totalCareerProfit", label: "Total Profit",  key: "totalCareerProfit", fmt: v => `${v>=0?"+":"−"}$${Math.abs(v||0).toLocaleString()}`, desc: "Lifetime net profit" },
-  { id: "biggestPotWon",     label: "Biggest Win",   key: "biggestPotWon",     fmt: v => `$${(v||0).toLocaleString()}`,                     desc: "Largest single win" },
-  { id: "biggestDoinkLoss",  label: "Biggest Doink", key: "biggestDoinkLoss",  fmt: v => `$${(v||0).toLocaleString()}`,                     desc: "Worst doink — hall of shame" },
+  { id: "bankroll",          label: "Chip Stack",    key: "bankroll",          fmt: v => `◆${(v||0).toLocaleString()}`,                     desc: "Biggest chip stack" },
+  { id: "totalCareerProfit", label: "Total Profit",  key: "totalCareerProfit", fmt: v => `${v>=0?"+":"−"}◆${Math.abs(v||0).toLocaleString()}`, desc: "Lifetime net profit" },
+  { id: "biggestPotWon",     label: "Biggest Win",   key: "biggestPotWon",     fmt: v => `◆${(v||0).toLocaleString()}`,                     desc: "Largest single win" },
+  { id: "biggestDoinkLoss",  label: "Biggest Doink", key: "biggestDoinkLoss",  fmt: v => `◆${(v||0).toLocaleString()}`,                     desc: "Worst doink — hall of shame" },
 ];
 
 export default function Leaderboard({ onBack, myUid }) {
