@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useReducer, useCallback } from "react";
 import { PrivacyPolicy, TermsOfUse, AccountDeletion, SupportPage } from "./LegalPages.jsx";
-import { EVENTS, applyAchievementEvent } from "./achievements.js";
+import { EVENTS, applyAchievementEvent, achievementCoinReward } from "./achievements.js";
 import { AchievementToasts, AchievementsScreen } from "./AchievementUI.jsx";
 
 // Developer name shown in the in-app About section.
@@ -47,7 +47,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;color:var(--text-primary);touch-
 @keyframes breathe{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.025)}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes ringExpand{0%{box-shadow:0 0 0 0 currentColor}100%{box-shadow:0 0 0 24px transparent}}
-@keyframes achToast{from{opacity:0;transform:translateX(-50%) translateY(-20px) scale(0.92)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+@keyframes achToastIn{from{opacity:0;transform:translateY(-20px) scale(0.94)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes doinkRing{0%{width:60px;height:60px;opacity:0.95}100%{width:560px;height:560px;opacity:0}}
 @keyframes doinkStamp{0%{opacity:0;transform:scale(2.4) rotate(-7deg)}60%{opacity:1}100%{opacity:1;transform:scale(1) rotate(-3deg)}}
 @keyframes mythRise{0%{opacity:0;transform:translateY(20px) scale(0.85)}100%{opacity:1;transform:translateY(0) scale(1)}}
@@ -2225,7 +2225,11 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   // Safe achievement emitter — no-op if not provided.
   const emitAch = onAchievement || (() => {});
   const { nH, nB, chips: startChips, ante: anteAmt, denoms, names, botNames, orientation, hintsDefault = true } = cfg;
-  const landscape = orientation === "landscape";
+  // The app is portrait-only. `landscape` is forced false so every
+  // `landscape ? ... : ...` branch resolves to the portrait layout. The
+  // landscape code paths remain but are inert. Device-level orientation
+  // lock is set via the viewport/orientation meta in index.html.
+  const landscape = false;
   const isCareer = cfg.mode === "career";
   // Quick Play replenish amount (separate from ante). Career & legacy configs
   // fall back to the ante, preserving prior behavior exactly.
@@ -3328,36 +3332,45 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   return (
     <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:landscape?"row":"column", background:"radial-gradient(ellipse at 50% 20%,#0E2A14 0%,#060D08 65%,#030806 100%)", overflow:"hidden", paddingTop:"env(safe-area-inset-top)" }}>
 
-      {/* ── Premium Header — DOINK · Round · Pot · Status ── */}
+      {/* ── Compact Casino HUD — logo · round/pot · rules/exit ──
+          A clean 3-column grid: logo left, Round + Pot centered, controls
+          right. Reduced height, aligned baseline, mobile-native. */}
       <div style={{
-        display:"flex", justifyContent:"space-between", alignItems:"center",
-        padding:landscape?"10px 14px":"12px 16px 10px",
+        display:landscape?"flex":"grid",
+        gridTemplateColumns: landscape ? undefined : "1fr auto 1fr",
+        alignItems:"center",
+        padding:landscape?"10px 14px":"calc(env(safe-area-inset-top) + 6px) 14px 8px",
         zIndex:30, flexShrink:0,
-        background:"linear-gradient(180deg, rgba(8,16,10,0.92) 0%, rgba(3,8,5,0.78) 60%, rgba(3,8,5,0.2) 100%)",
+        background:"linear-gradient(180deg, rgba(8,16,10,0.95) 0%, rgba(3,8,5,0.82) 70%, rgba(3,8,5,0.25) 100%)",
         backdropFilter:"blur(14px)",
-        flexDirection:landscape?"column":"row",
+        flexDirection:landscape?"column":undefined,
         width:landscape?"auto":"100%",
         gap:landscape?10:0,
         borderBottom:"1px solid rgba(212,168,67,0.12)",
         boxShadow:"0 4px 18px rgba(0,0,0,0.4)",
       }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:landscape?"1.25rem":"1.4rem", color:"#D4A843", fontWeight:900, letterSpacing:"0.06em", textShadow:"0 0 18px rgba(212,168,67,0.4)", lineHeight:1 }}>DOINK</div>
-          <div style={{ width:1, height:22, background:"rgba(212,168,67,0.25)" }} aria-hidden="true"/>
-          <div style={{ display:"flex", flexDirection:"column", lineHeight:1.1 }}>
-            <div style={{ fontSize:"0.55rem", letterSpacing:"0.16em", color:"rgba(212,168,67,0.5)", fontWeight:700, textTransform:"uppercase" }}>Round</div>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color:"#F0C96A", fontWeight:700 }}>{round}</div>
+        {/* Left — logo */}
+        <div style={{ display:"flex", alignItems:"center", justifySelf:"start" }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:landscape?"1.2rem":"1.3rem", color:"#D4A843", fontWeight:900, letterSpacing:"0.06em", textShadow:"0 0 18px rgba(212,168,67,0.4)", lineHeight:1 }}>DOINK</div>
+        </div>
+
+        {/* Center — Round + Pot, the two live stats */}
+        <div style={{ display:"flex", alignItems:"center", gap:14, justifySelf:"center" }}>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", lineHeight:1.05 }}>
+            <div style={{ fontSize:"0.5rem", letterSpacing:"0.18em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase" }}>Round</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", color:"#F0C96A", fontWeight:700 }}>{round}</div>
           </div>
-          <div style={{ width:1, height:22, background:"rgba(212,168,67,0.25)" }} aria-hidden="true"/>
-          <div style={{ display:"flex", flexDirection:"column", lineHeight:1.1 }}>
-            <div style={{ fontSize:"0.55rem", letterSpacing:"0.16em", color:"rgba(212,168,67,0.5)", fontWeight:700, textTransform:"uppercase" }}>Pot</div>
-            <AnimatedNumber value={pot} duration={700} style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color:"#F0C96A", fontWeight:700 }}/>
+          <div style={{ width:1, height:24, background:"rgba(212,168,67,0.22)" }} aria-hidden="true"/>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", lineHeight:1.05 }}>
+            <div style={{ fontSize:"0.5rem", letterSpacing:"0.18em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase" }}>Pot</div>
+            <AnimatedNumber value={pot} duration={700} style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", color:"#F0C96A", fontWeight:700 }}/>
           </div>
         </div>
-        {!landscape && <div role="status" aria-live="polite" style={{ flex:1, minWidth:0, fontSize:"0.78rem", color:"rgba(245,237,216,0.62)", textAlign:"center", fontWeight:500, padding:"0 8px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{banner}</div>}
-        <div style={{ display:"flex", gap:6, flexDirection:landscape?"column":"row", alignItems:"center", flexShrink:0 }}>
-          {!isCareer && <button onClick={() => setHintsOn(h => !h)} aria-pressed={hintsOn} style={{ padding:"5px 10px", borderRadius:8, fontSize:"0.7rem", fontWeight:600, background:hintsOn?"rgba(212,168,67,0.18)":"rgba(255,255,255,0.05)", border:hintsOn?"1px solid rgba(212,168,67,0.4)":"1px solid rgba(255,255,255,0.1)", color:hintsOn?"#D4A843":"rgba(245,237,216,0.35)", cursor:"pointer" }}>Hints {hintsOn?"ON":"OFF"}</button>}
-          <button onClick={() => setShowRules(true)} style={{ padding:"5px 10px", borderRadius:8, fontSize:"0.7rem", fontWeight:600, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(245,237,216,0.45)", cursor:"pointer" }}>Rules</button>
+
+        {/* Right — Rules + Exit (and Hints in Quick Play) */}
+        <div style={{ display:"flex", gap:6, flexDirection:landscape?"column":"row", alignItems:"center", justifySelf:"end" }}>
+          {!isCareer && !landscape && <button onClick={() => setHintsOn(h => !h)} aria-pressed={hintsOn} style={{ padding:"6px 9px", borderRadius:8, fontSize:"0.66rem", fontWeight:700, background:hintsOn?"rgba(212,168,67,0.18)":"rgba(255,255,255,0.05)", border:hintsOn?"1px solid rgba(212,168,67,0.4)":"1px solid rgba(255,255,255,0.1)", color:hintsOn?"#D4A843":"rgba(245,237,216,0.4)", cursor:"pointer" }}>Hints</button>}
+          <button onClick={() => setShowRules(true)} style={{ padding:"6px 11px", borderRadius:8, fontSize:"0.7rem", fontWeight:700, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", color:"rgba(245,237,216,0.6)", cursor:"pointer" }}>Rules</button>
           <button onClick={() => {
             // In career mode, exiting mid-round would forfeit chips on the
             // table. Only allow exit at a safe point (round summary / game
@@ -3367,9 +3380,20 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
               return;
             }
             onExit();
-          }} style={{ padding:"5px 10px", borderRadius:8, fontSize:"0.7rem", fontWeight:600, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(245,237,216,0.45)", cursor:"pointer" }}>Exit</button>
+          }} style={{ padding:"6px 11px", borderRadius:8, fontSize:"0.7rem", fontWeight:700, background:"rgba(231,76,60,0.12)", border:"1px solid rgba(231,76,60,0.3)", color:"rgba(231,140,130,0.95)", cursor:"pointer" }}>Exit</button>
         </div>
       </div>
+
+      {/* Status banner — sits just under the HUD in portrait so the header
+          itself stays a clean 3-column grid. */}
+      {!landscape && (
+        <div role="status" aria-live="polite" style={{
+          flexShrink:0, padding:"5px 14px 7px", textAlign:"center",
+          fontSize:"0.76rem", color:"rgba(245,237,216,0.6)", fontWeight:500,
+          whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+          background:"linear-gradient(180deg, rgba(3,8,5,0.55), transparent)",
+        }}>{banner}</div>
+      )}
 
       {/* ── Table ── */}
       <div style={{ flex:1, position:"relative", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}>
@@ -4688,10 +4712,18 @@ export function GameRoot({ career, setCareer, isGuest, onSignOut, onRequireSignI
     setCareer(c => {
       if (!c) return c;
       const { progress, unlocked, newlyUnlocked } = applyAchievementEvent(c, eventName, payload || {});
+      let bankroll = c.bankroll;
       if (newlyUnlocked.length) {
-        setAchQueue(q => [...q, ...newlyUnlocked]);
+        // Attach each achievement's coin reward, queue the toasts, and add
+        // the total to the bankroll. Only just-unlocked achievements appear
+        // here, so rewards are paid exactly once (going-forward only —
+        // previously-earned achievements never re-trigger).
+        const withRewards = newlyUnlocked.map(a => ({ ...a, coinReward: achievementCoinReward(a) }));
+        const totalCoins = withRewards.reduce((s, a) => s + (a.coinReward || 0), 0);
+        bankroll = (c.bankroll || 0) + totalCoins;
+        setAchQueue(q => [...q, ...withRewards]);
       }
-      return { ...c, achievementProgress: progress, achievements: unlocked };
+      return { ...c, bankroll, achievementProgress: progress, achievements: unlocked };
     });
   }, [setCareer]);
   const dismissAchToast = useCallback((id) => {

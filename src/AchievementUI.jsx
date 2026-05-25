@@ -65,29 +65,47 @@ export function AchievementToasts({ queue, onDismiss }) {
     if (current || queue.length === 0) return;
     const next = queue[0];
     setCurrent(next);
+    // Auto-dismiss fallback — the player can also tap to dismiss sooner.
     const t = setTimeout(() => {
       setCurrent(null);
       onDismiss(next.id);
-    }, 3200);
+    }, 4000);
     return () => clearTimeout(t);
   }, [queue, current, onDismiss]);
 
   if (!current) return null;
   const rc = RARITY[current.rarity];
+  const dismiss = () => {
+    const id = current.id;
+    setCurrent(null);
+    onDismiss(id);
+  };
+  // Coin reward, if this achievement grants one (set by the rewards system).
+  const coins = current.coinReward || 0;
+
+  // Outer wrapper: a full-width fixed bar that CENTERS its child with flexbox.
+  // Centering via flexbox (not transform) means the toast's own entrance
+  // animation can't fight a translateX and drift off-screen.
   return (
     <div style={{
-      position:"fixed", top:"calc(env(safe-area-inset-top) + 14px)", left:"50%",
-      transform:"translateX(-50%)", zIndex:400, width:"min(92vw,400px)",
+      position:"fixed", top:"calc(env(safe-area-inset-top) + 12px)",
+      left:0, right:0, zIndex:400,
+      display:"flex", justifyContent:"center",
+      padding:"0 12px", boxSizing:"border-box",
       pointerEvents:"none",
     }}>
-      <div style={{
-        display:"flex", alignItems:"center", gap:12,
-        background:"linear-gradient(160deg, rgba(28,22,8,0.98), rgba(10,8,4,0.99))",
-        border:`1.5px solid ${rc.color}`,
-        borderRadius:16, padding:"12px 14px",
-        boxShadow:`0 12px 40px rgba(0,0,0,0.85), 0 0 28px ${rc.color}44`,
-        animation:"achToast 0.4s cubic-bezier(.16,1,.3,1) both",
-      }}>
+      <div
+        onClick={dismiss}
+        role="button"
+        style={{
+          width:"min(94vw,420px)", pointerEvents:"auto", cursor:"pointer",
+          display:"flex", alignItems:"center", gap:12,
+          background:"linear-gradient(160deg, rgba(28,22,8,0.98), rgba(10,8,4,0.99))",
+          border:`1.5px solid ${rc.color}`,
+          borderRadius:16, padding:"12px 14px",
+          boxShadow:`0 12px 40px rgba(0,0,0,0.85), 0 0 28px ${rc.color}44`,
+          animation:"achToastIn 0.4s cubic-bezier(.16,1,.3,1) both",
+        }}>
         <AchievementBadge iconType={current.iconType} rarity={current.rarity} size={48}/>
         <div style={{ minWidth:0, flex:1 }}>
           <div style={{ fontSize:"0.62rem", letterSpacing:"0.16em", color:rc.color, fontWeight:700, textTransform:"uppercase" }}>
@@ -99,7 +117,19 @@ export function AchievementToasts({ queue, onDismiss }) {
           <div style={{ fontSize:"0.76rem", color:"rgba(245,237,216,0.6)", marginTop:1, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
             {current.desc}
           </div>
+          {coins > 0 && (
+            <div style={{ fontSize:"0.74rem", color:"#F0C96A", fontWeight:700, marginTop:3 }}>
+              + ◆{coins} chips
+            </div>
+          )}
         </div>
+        {/* Explicit dismiss affordance */}
+        <div aria-hidden="true" style={{
+          flexShrink:0, width:24, height:24, borderRadius:"50%",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          background:"rgba(255,255,255,0.08)", color:"rgba(245,237,216,0.6)",
+          fontSize:"0.9rem", fontWeight:700,
+        }}>✕</div>
       </div>
     </div>
   );
@@ -118,8 +148,14 @@ export function AchievementsScreen({ career, onBack }) {
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)", fontFamily:"'DM Sans',sans-serif" }}>
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"calc(env(safe-area-inset-top) + 18px) 16px calc(44px + env(safe-area-inset-bottom))" }}>
-        {/* Header */}
-        <div style={{ width:"100%", maxWidth:520, display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+        {/* Header — sticky so it stays visible while the list scrolls */}
+        <div style={{
+          position:"sticky", top:"env(safe-area-inset-top)", zIndex:20,
+          width:"100%", maxWidth:520,
+          display:"flex", justifyContent:"space-between", alignItems:"center",
+          marginBottom:16, padding:"10px 0",
+          background:"linear-gradient(180deg, #0C1A10 0%, #0C1A10 75%, transparent 100%)",
+        }}>
           <button onClick={onBack} style={{ padding:"8px 14px", borderRadius:10, background:"rgba(255,255,255,0.06)", border:"1.5px solid rgba(255,255,255,0.16)", color:"rgba(245,237,216,0.78)", fontSize:"0.85rem", fontWeight:500, cursor:"pointer" }}>← Back</button>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#D4A843", fontWeight:700, letterSpacing:"0.04em" }}>Achievements</div>
           <div style={{ fontSize:"0.8rem", color:"#F0C96A", fontWeight:700, width:60, textAlign:"right" }}>{unlocked}/{total}</div>
@@ -177,6 +213,13 @@ export function AchievementsScreen({ career, onBack }) {
                   <div style={{ fontSize:"0.78rem", color:"rgba(245,237,216,0.55)", marginTop:1 }}>
                     {secret ? "Keep playing to discover this one." : a.desc}
                   </div>
+                  {/* Coin reward — shown for non-secret achievements. */}
+                  {!secret && (
+                    <div style={{ fontSize:"0.7rem", fontWeight:700, marginTop:3,
+                      color: isUnlocked ? "rgba(245,237,216,0.4)" : "#F0C96A" }}>
+                      {isUnlocked ? `Earned ◆${RARITY[a.rarity]?.coins || 0}` : `Reward ◆${RARITY[a.rarity]?.coins || 0}`}
+                    </div>
+                  )}
                   {/* progress bar for multi-step, still-locked */}
                   {!isUnlocked && !secret && a.target > 1 && (
                     <div style={{ marginTop:6 }}>

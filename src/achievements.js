@@ -41,13 +41,22 @@ export const EVENTS = {
   LEADERBOARD_POSTED: "LEADERBOARD_POSTED",
 };
 
+// Each rarity tier carries a coin reward, paid once when the achievement is
+// unlocked. Values scale with difficulty but are deliberately modest — a
+// nice boost, not a way to skip earning your way up the tables.
 export const RARITY = {
-  common:    { label: "Common",    color: "#9AA0A6" },
-  uncommon:  { label: "Uncommon",  color: "#5FB85F" },
-  rare:      { label: "Rare",      color: "#4A90D9" },
-  epic:      { label: "Epic",      color: "#A86FD4" },
-  legendary: { label: "Legendary", color: "#F0C96A" },
+  common:    { label: "Common",    color: "#9AA0A6", coins: 25 },
+  uncommon:  { label: "Uncommon",  color: "#5FB85F", coins: 60 },
+  rare:      { label: "Rare",      color: "#4A90D9", coins: 150 },
+  epic:      { label: "Epic",      color: "#A86FD4", coins: 350 },
+  legendary: { label: "Legendary", color: "#F0C96A", coins: 750 },
 };
+
+// Coin reward for a given achievement (by its rarity tier).
+export function achievementCoinReward(ach) {
+  if (!ach) return 0;
+  return RARITY[ach.rarity]?.coins || 0;
+}
 
 // ── Achievement definitions ─────────────────────────────────
 // Each: id, title, description, category, rarity, target (progress needed),
