@@ -1627,31 +1627,96 @@ function OutcomeModal({ title, body, color, onClose }) {
 // ─────────────────────────────────────────────────────────
 // LOG DRAWER
 // ─────────────────────────────────────────────────────────
-function LogDrawer({ log, landscape }) {
-  const [open, setOpen] = useState(false);
-  const last = log[log.length - 1];
-  const lastColor = last?.type === "doink" ? "#E74C3C" : last?.type === "win" ? "#27AE60" : "rgba(245,237,216,0.6)";
+// ─────────────────────────────────────────────────────────
+// SLIDE-UP SHEET — shared shell for the Log and Market drawers.
+// Dims the table behind, closes on X / outside tap / swipe down.
+// ─────────────────────────────────────────────────────────
+function SlideSheet({ title, onClose, children }) {
+  const startY = useRef(null);
+  const [drag, setDrag] = useState(0);
+  const onTouchStart = e => { startY.current = e.touches[0].clientY; };
+  const onTouchMove = e => {
+    if (startY.current == null) return;
+    const dy = e.touches[0].clientY - startY.current;
+    if (dy > 0) setDrag(dy);            // only track downward drag
+  };
+  const onTouchEnd = () => {
+    if (drag > 90) onClose();           // dragged far enough → close
+    setDrag(0);
+    startY.current = null;
+  };
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,0.62)", backdropFilter:"blur(4px)" }}>
+      <div
+        onClick={e => e.stopPropagation()}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        className="sheet-up"
+        style={{
+          position:"fixed", bottom:0, left:0, right:0,
+          transform: drag ? `translateY(${drag}px)` : undefined,
+          transition: drag ? "none" : undefined,
+          background:"linear-gradient(175deg,#0C1A10,#060D08)",
+          borderTop:"1.5px solid rgba(212,168,67,0.22)",
+          borderRadius:"22px 22px 0 0",
+          padding:`10px 20px calc(26px + env(safe-area-inset-bottom))`,
+          maxHeight:"66vh", overflowY:"auto", zIndex:61,
+        }}>
+        {/* grab handle */}
+        <div aria-hidden="true" style={{ width:38, height:4, borderRadius:3, background:"rgba(245,237,216,0.25)", margin:"4px auto 12px" }}/>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color:"#D4A843", fontWeight:700, letterSpacing:"0.02em" }}>{title}</div>
+          <button onClick={onClose} aria-label="Close" style={{ width:30, height:30, borderRadius:"50%", background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(245,237,216,0.7)", fontSize:"0.95rem", fontWeight:700, cursor:"pointer" }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Lower-rail buttons + the Log / Market drawers. `openDrawer` is owned by the
+// parent so the two drawers are mutually exclusive.
+function TableDrawers({ openDrawer, setOpenDrawer, log, marketContent }) {
   return (
     <>
-      <div onClick={() => setOpen(o => !o)} style={{ flexShrink:0, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(8px)", borderTop:landscape?"none":"1px solid rgba(255,255,255,0.06)", padding:"8px 16px", fontSize:"0.82rem", zIndex:30, minHeight:34, color:lastColor, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", width:landscape?"auto":"100%", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", fontWeight:500 }}>
-        <span style={{ overflow:"hidden", textOverflow:"ellipsis" }}>{last?.msg || ""}</span>
-        <span style={{ flexShrink:0, marginLeft:10, fontSize:"0.65rem", color:"rgba(255,255,255,0.2)", fontWeight:600 }}>LOG ▲</span>
+      {/* Lower rail: LOG (left) and MARKET (right) — buttons only by default */}
+      <div style={{ flexShrink:0, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 14px 8px", zIndex:30 }}>
+        <button onClick={() => setOpenDrawer("log")} style={drawerTabStyle}>
+          <span style={{ fontSize:"0.62rem", letterSpacing:"0.12em" }}>▤ LOG</span>
+        </button>
+        <button onClick={() => setOpenDrawer("market")} style={drawerTabStyle}>
+          <span style={{ fontSize:"0.62rem", letterSpacing:"0.12em" }}>MARKET ▦</span>
+        </button>
       </div>
-      {open && (
-        <div onClick={() => setOpen(false)} style={{ position:"fixed", inset:0, zIndex:50, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(4px)" }}>
-          <div onClick={e => e.stopPropagation()} className="sheet-up" style={{ position:"fixed", bottom:0, left:0, right:0, background:"linear-gradient(175deg,#0C1A10,#060D08)", borderTop:"1.5px solid rgba(212,168,67,0.2)", borderRadius:"22px 22px 0 0", padding:`16px 20px calc(28px + env(safe-area-inset-bottom))`, maxHeight:"55vh", overflowY:"auto" }}>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"0.9rem", color:"#D4A843", fontWeight:700, marginBottom:14, textAlign:"center", letterSpacing:"0.02em" }}>Game Log</div>
-            {[...log].reverse().slice(0, 25).map((entry, i) => (
-              <div key={i} style={{ fontSize:"0.88rem", padding:"8px 0", borderBottom:"1px solid rgba(255,255,255,0.05)", color:entry.type==="doink"?"#E74C3C":entry.type==="win"?"#27AE60":"rgba(245,237,216,0.65)", fontWeight:entry.type==="doink"||entry.type==="win"?600:400, lineHeight:1.4 }}>
-                {entry.msg}
-              </div>
-            ))}
+
+      {openDrawer === "log" && (
+        <SlideSheet title="Game Log" onClose={() => setOpenDrawer(null)}>
+          {[...log].reverse().slice(0, 30).map((entry, i) => (
+            <div key={i} style={{ fontSize:"0.86rem", padding:"8px 0", borderBottom:"1px solid rgba(255,255,255,0.05)", color:entry.type==="doink"?"#E74C3C":entry.type==="win"?"#27AE60":"rgba(245,237,216,0.65)", fontWeight:entry.type==="doink"||entry.type==="win"?600:400, lineHeight:1.4 }}>
+              {entry.msg}
+            </div>
+          ))}
+          {log.length === 0 && <div style={{ color:"rgba(245,237,216,0.4)", fontSize:"0.85rem", textAlign:"center", padding:"16px 0" }}>No events yet.</div>}
+        </SlideSheet>
+      )}
+
+      {openDrawer === "market" && (
+        <SlideSheet title="Marketplace" onClose={() => setOpenDrawer(null)}>
+          <div style={{ fontSize:"0.74rem", color:"rgba(212,168,67,0.7)", textAlign:"center", marginBottom:12, fontWeight:600 }}>
+            Gameplay is paused while the Marketplace is open.
           </div>
-        </div>
+          {marketContent}
+        </SlideSheet>
       )}
     </>
   );
 }
+
+const drawerTabStyle = {
+  padding:"7px 14px", borderRadius:10,
+  background:"rgba(0,0,0,0.55)", backdropFilter:"blur(8px)",
+  border:"1px solid rgba(212,168,67,0.25)",
+  color:"rgba(245,237,216,0.7)", fontWeight:800, cursor:"pointer",
+};
 
 // ─────────────────────────────────────────────────────────
 // RULES PAGE
@@ -2359,6 +2424,10 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   const [betMarker, setBetMarker] = useState(null);
   // Bot "thinking" indicator next to active seat
   const [botThinking, setBotThinking] = useState(null); // playerId | null
+  // Which lower-rail drawer is open: "log" | "market" | null. Only one at a
+  // time. When "market" is open, gameplay pauses (see the bot-turn effect).
+  const [openDrawer, setOpenDrawer] = useState(null);
+  const marketOpen = openDrawer === "market";
 
   useEffect(() => { potRef.current = pot; }, [pot]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
@@ -2522,6 +2591,9 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   // instead of relying on timed callbacks racing with state.
   useEffect(() => {
     if (phase !== "betting") return;
+    // Gameplay pauses while the Market drawer is open — bot turns are held.
+    // This effect re-runs when `marketOpen` flips back to false, resuming.
+    if (marketOpen) return;
     const q = queueRef.current;
     const idx = queueIdxRef.current;
     const slot = q[idx];
@@ -2563,7 +2635,8 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
       }
     }
     // FIX #1: depend on slotId so effect re-runs when queue is mutated in place
-  }, [phase, queueIdx, turnQueue[queueIdx]?.slotId]);
+    // marketOpen: re-run when the Market drawer closes so play resumes.
+  }, [phase, queueIdx, turnQueue[queueIdx]?.slotId, marketOpen]);
 
   const runBotSlot = (slot, p) => {
     const [a, b] = slot.cards;
@@ -3675,8 +3748,59 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         })}
       </div>
 
-      {/* ── Log drawer ── */}
-      <LogDrawer log={log} landscape={landscape} />
+      {/* ── Lower-rail drawers: Log + Marketplace ── */}
+      <TableDrawers
+        openDrawer={openDrawer}
+        setOpenDrawer={setOpenDrawer}
+        log={log}
+        marketContent={
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {/* Active table sell offer, if any */}
+            {pendingSellOffer ? (() => {
+              const seller = players.find(p => p.id === pendingSellOffer.sellerId);
+              const isMine = pendingSellOffer.sellerId === humanPlayer?.id;
+              const canAfford = (humanPlayer?.chips || 0) >= (pendingSellOffer.chips || 0);
+              return (
+                <div style={{ background:"rgba(212,168,67,0.07)", border:"1px solid rgba(212,168,67,0.25)", borderRadius:12, padding:"12px 14px" }}>
+                  <div style={{ fontSize:"0.8rem", color:"#D4A843", fontWeight:700, marginBottom:3 }}>
+                    {isMine ? "Your hand is listed" : `${seller?.name || "A player"} is selling`}
+                  </div>
+                  <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", color:"#F0C96A", fontWeight:700, marginBottom:8 }}>{pendingSellOffer.desc}</div>
+                  {isMine ? (
+                    <button onClick={() => { withdrawSellOffer(); setOpenDrawer(null); }} style={{ ...sBtn, width:"100%", fontSize:"0.85rem" }}>Withdraw Listing</button>
+                  ) : (
+                    <button onClick={() => { acceptOffer(pendingSellOffer, humanPlayer.id); setOpenDrawer(null); }} disabled={!canAfford}
+                      style={{ ...gBtn, width:"100%", fontSize:"0.85rem", opacity:canAfford?1:0.4 }}>
+                      {canAfford ? `Buy for ◆${pendingSellOffer.chips}` : "Can't Afford"}
+                    </button>
+                  )}
+                </div>
+              );
+            })() : (
+              <div style={{ fontSize:"0.82rem", color:"rgba(245,237,216,0.5)", textAlign:"center", padding:"6px 0" }}>
+                No active listings right now.
+              </div>
+            )}
+
+            {/* Player actions — available during the buy phase */}
+            {phase === "preBuy" && humanPlayer && (
+              <>
+                <button onClick={() => { setOpenDrawer(null); setTradeMode("buy"); setSheet("trade"); }} style={{ ...gBtn, width:"100%", fontSize:"0.9rem" }}>🤝 Buy a Hand</button>
+                {!pendingSellOffer && (
+                  <button onClick={() => { setOpenDrawer(null); setTradeMode("sell"); setSheet("trade"); }} style={{ ...sBtn, width:"100%", fontSize:"0.9rem" }}>🏷️ Sell My Hand</button>
+                )}
+              </>
+            )}
+            {phase !== "preBuy" && (
+              <div style={{ fontSize:"0.74rem", color:"rgba(245,237,216,0.4)", textAlign:"center", marginTop:4 }}>
+                Buying and selling happen right after cards are dealt.
+              </div>
+            )}
+          </div>
+        }
+      />
+
+      {/* Active turn drives gameplay below. */}
 
       {/* ── PREBUY PHASE: human can buy hands before bidding ── */}
       {phase==="preBuy" && !sheet && !pendingSellOffer && humanPlayer && (
@@ -3779,13 +3903,26 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
           <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap", marginBottom:8 }}>
             {/* Spread bet needs a card to fall BETWEEN your two. A pair
                 (spread 0) or adjacent cards like Q-K (spread 1) have no
-                between — hide the spread button in those cases. */}
+                between — hide the spread button in those cases.
+                Each button shows its label plus the payout odds. */}
             {slotSpread && slotSpread.v >= 2 &&
-              <button onClick={()=>{setBetVal(0);setSheet("bet");}} disabled={cantBet} style={{...gBtn, opacity:cantBet?0.4:1}}>BET SPREAD</button>}
-            <button onClick={()=>{setBetVal(0);setSheet("doinkBet");}} disabled={cantBet} style={{...dBtn, opacity:cantBet?0.4:1}}>💥 DOINK BET</button>
-            {slotSpread?.mythical&&<button onClick={()=>{setBetVal(0);setSheet("mythical");}} disabled={cantBet} style={{...pBtn, opacity:cantBet?0.4:1}}>✨ MYTHICAL</button>}
+              <button onClick={()=>{setBetVal(0);setSheet("bet");}} disabled={cantBet} style={{...gBtn, opacity:cantBet?0.4:1, display:"flex", flexDirection:"column", lineHeight:1.15, padding:"9px 16px"}}>
+                <span>BET SPREAD</span>
+                <span style={{ fontSize:"0.62rem", fontWeight:600, opacity:0.8 }}>Spread {slotSpread.v} · pays 1:1</span>
+              </button>}
+            <button onClick={()=>{setBetVal(0);setSheet("doinkBet");}} disabled={cantBet} style={{...dBtn, opacity:cantBet?0.4:1, display:"flex", flexDirection:"column", lineHeight:1.15, padding:"9px 16px"}}>
+              <span>💥 DOINK BET</span>
+              <span style={{ fontSize:"0.62rem", fontWeight:600, opacity:0.85 }}>pays 7:1</span>
+            </button>
+            {slotSpread?.mythical&&<button onClick={()=>{setBetVal(0);setSheet("mythical");}} disabled={cantBet} style={{...pBtn, opacity:cantBet?0.4:1, display:"flex", flexDirection:"column", lineHeight:1.15, padding:"9px 16px"}}>
+              <span>✨ MYTHICAL</span>
+              <span style={{ fontSize:"0.62rem", fontWeight:600, opacity:0.85 }}>pays 12:1</span>
+            </button>}
             {/* Double Doink — only when the player holds a pair (spread 0). */}
-            {slotSpread?.v===0&&<button onClick={()=>{setBetVal(0);setSheet("doubledoink");}} disabled={cantBet} style={{...dBtn, background:"linear-gradient(145deg,#7A1212,#C0392B)", opacity:cantBet?0.4:1}}>💥💥 DOUBLE DOINK</button>}
+            {slotSpread?.v===0&&<button onClick={()=>{setBetVal(0);setSheet("doubledoink");}} disabled={cantBet} style={{...dBtn, background:"linear-gradient(145deg,#7A1212,#C0392B)", opacity:cantBet?0.4:1, display:"flex", flexDirection:"column", lineHeight:1.15, padding:"9px 16px"}}>
+              <span>💥💥 DOUBLE DOINK</span>
+              <span style={{ fontSize:"0.62rem", fontWeight:600, opacity:0.85 }}>pays 18:1</span>
+            </button>}
             <button onClick={humanPass} style={sBtn}>PASS</button>
           </div>
           {cantBet && (
