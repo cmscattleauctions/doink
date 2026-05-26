@@ -270,6 +270,17 @@ const xpToNextLevel = xp => {
   return { level: lvl, current: xp - curReq, needed: nextReq - curReq, total: nextReq };
 };
 
+// Rank title derived from career level. No separate stored "rank" field —
+// the tier name is purely a function of level, so it can never drift out of
+// sync with the player's actual progress.
+const rankForLevel = lvl => {
+  if (lvl >= 25) return "Legend";
+  if (lvl >= 16) return "High Roller";
+  if (lvl >= 9)  return "Sharp";
+  if (lvl >= 4)  return "Regular";
+  return "Rookie";
+};
+
 // applyCareerSession: pure function that merges a finished session into a career.
 const applyCareerSession = (career, result) => {
   const oldBankroll = career.bankroll;
@@ -848,7 +859,7 @@ function getRecommendation(a, b) {
   // sp 7 → hit 48%, EV = -0.04
   // sp 8 → hit 56%, EV = +0.12
   // sp 10 (A-J) → hit 72%, EV = +0.44
-  if (sp === 2) return { label: "✨ Mythical available", color: "#9B59B6" };
+  if (sp === 2) return { label: " Mythical available", color: "#9B59B6" };
   if (sp === 0) return { label: "Pass — same rank", color: "rgba(245,237,216,0.55)" };
   if (sp <= 2) return { label: "Pass — too narrow", color: "rgba(245,237,216,0.55)" };
   if (sp <= 4) return { label: "Risky — small bet at most", color: "#E67E22" };
@@ -1263,9 +1274,9 @@ function HintBar({ cards }) {
       </div>
       <div style={{ display:"flex", gap:12, justifyContent:"center", marginTop:6, flexWrap:"wrap" }}>
         <span style={{ fontSize:"0.72rem", color:"#27AE60", fontWeight:600 }}>✓ {hitPct}%</span>
-        <span style={{ fontSize:"0.72rem", color:"#E74C3C", fontWeight:600 }}>💥 {doinkPct}%</span>
+        <span style={{ fontSize:"0.72rem", color:"#E74C3C", fontWeight:600 }}> {doinkPct}%</span>
         <span style={{ fontSize:"0.72rem", color:"rgba(245,237,216,0.38)", fontWeight:500 }}>● {missPct}%</span>
-        {mythical && <span style={{ fontSize:"0.72rem", color:"#9B59B6", fontWeight:700 }}>✨ 12× avail!</span>}
+        {mythical && <span style={{ fontSize:"0.72rem", color:"#9B59B6", fontWeight:700 }}> 12× avail!</span>}
       </div>
     </div>
   );
@@ -1308,7 +1319,7 @@ function OfferBuilder({ denoms, maxChips, onConfirm, onCancel, label = "Make Off
 // TAP TO REVEAL — bet placed, player taps deck to flip hit card
 // ─────────────────────────────────────────────────────────
 function TapToReveal({ slot, amount, type, onReveal }) {
-  const label = type === "doink" ? "💥 Doink Bet" : type === "doubledoink" ? "💥💥 Double Doink" : type === "mythical" ? "✨ Mythical" : type === "blind" ? "🎰 Blind" : "Spread";
+  const label = type === "doink" ? "Doink Bet" : type === "doubledoink" ? "Double Doink" : type === "mythical" ? "Mythical" : type === "blind" ? "Blind" : "Spread";
   const [a, b] = slot.cards || [];
   return (
     <div style={{ position:"fixed", inset:0, zIndex:240, background:"radial-gradient(ellipse at center,rgba(8,16,10,0.92),rgba(2,5,3,0.98))", backdropFilter:"blur(8px)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24 }}>
@@ -1413,6 +1424,100 @@ function GameIcon({ name, size = 24, color = "#F0C96A" }) {
           <ellipse cx="16" cy="22" rx="11" ry="4" fill={color} opacity="0.5"/>
           <ellipse cx="16" cy="18" rx="11" ry="4" fill={color} opacity="0.75"/>
           <ellipse cx="16" cy="14" rx="11" ry="4" fill={color}/>
+        </svg>
+      );
+    case "trophy":
+      return (
+        <svg {...common}>
+          <path d="M11 6h10v5a5 5 0 01-10 0z" fill={color}/>
+          <path d="M11 7H7v2a4 4 0 004 4M21 7h4v2a4 4 0 01-4 4" stroke={color} strokeWidth="2" fill="none"/>
+          <rect x="14" y="16" width="4" height="6" fill={color}/>
+          <rect x="10" y="22" width="12" height="3" rx="1" fill={color}/>
+        </svg>
+      );
+    case "medal":
+      return (
+        <svg {...common}>
+          <path d="M11 4l5 9 5-9" stroke={color} strokeWidth="2.4" fill="none"/>
+          <circle cx="16" cy="20" r="8" fill={color}/>
+          <circle cx="16" cy="20" r="3.6" fill="#0C1A10"/>
+        </svg>
+      );
+    case "lock":
+      return (
+        <svg {...common}>
+          <rect x="8" y="14" width="16" height="13" rx="2.5" fill={color}/>
+          <path d="M11 14v-3a5 5 0 0110 0v3" stroke={color} strokeWidth="2.6" fill="none"/>
+        </svg>
+      );
+    case "unlock":
+      return (
+        <svg {...common}>
+          <rect x="8" y="14" width="16" height="13" rx="2.5" fill={color}/>
+          <path d="M11 14v-3a5 5 0 019.6-2" stroke={color} strokeWidth="2.6" fill="none"/>
+        </svg>
+      );
+    case "handshake":
+      return (
+        <svg {...common}>
+          <path d="M5 13l6-4 5 3 5-3 6 4-5 9-4-3-3 3-3-3-4 3z" fill={color}/>
+        </svg>
+      );
+    case "coins": // chip stack used for "money" contexts
+      return (
+        <svg {...common}>
+          <ellipse cx="16" cy="11" rx="9" ry="3.4" fill={color}/>
+          <path d="M7 11v6c0 1.9 4 3.4 9 3.4s9-1.5 9-3.4v-6" stroke={color} strokeWidth="2" fill="none"/>
+          <path d="M7 17v4c0 1.9 4 3.4 9 3.4s9-1.5 9-3.4v-4" stroke={color} strokeWidth="2" fill="none"/>
+        </svg>
+      );
+    case "megaphone":
+      return (
+        <svg {...common}>
+          <path d="M6 13l14-6v18l-14-6z" fill={color}/>
+          <rect x="4" y="13" width="4" height="6" rx="1" fill={color}/>
+          <path d="M10 20v5h3v-4" stroke={color} strokeWidth="2" fill="none"/>
+        </svg>
+      );
+    case "dice":
+      return (
+        <svg {...common}>
+          <rect x="6" y="6" width="20" height="20" rx="4" fill={color}/>
+          <circle cx="12" cy="12" r="2" fill="#0C1A10"/>
+          <circle cx="20" cy="12" r="2" fill="#0C1A10"/>
+          <circle cx="16" cy="16" r="2" fill="#0C1A10"/>
+          <circle cx="12" cy="20" r="2" fill="#0C1A10"/>
+          <circle cx="20" cy="20" r="2" fill="#0C1A10"/>
+        </svg>
+      );
+    case "book":
+      return (
+        <svg {...common}>
+          <path d="M6 7c4-2 8-2 10 0v19c-2-2-6-2-10 0z" fill={color}/>
+          <path d="M26 7c-4-2-8-2-10 0v19c2-2 6-2 10 0z" fill={color} opacity="0.7"/>
+        </svg>
+      );
+    case "scale":
+      return (
+        <svg {...common}>
+          <rect x="15" y="6" width="2" height="20" fill={color}/>
+          <path d="M8 10h16" stroke={color} strokeWidth="2"/>
+          <path d="M8 10l-4 7h8zM24 10l-4 7h8z" stroke={color} strokeWidth="2" fill="none"/>
+          <rect x="11" y="25" width="10" height="2.5" rx="1" fill={color}/>
+        </svg>
+      );
+    case "person":
+      return (
+        <svg {...common}>
+          <circle cx="16" cy="11" r="6" fill={color}/>
+          <path d="M5 27c0-6 5-9 11-9s11 3 11 9z" fill={color}/>
+        </svg>
+      );
+    case "cards": // two overlapping cards
+      return (
+        <svg {...common}>
+          <rect x="6" y="9" width="13" height="17" rx="2.5" fill={color} opacity="0.6" transform="rotate(-12 12 17)"/>
+          <rect x="13" y="7" width="13" height="17" rx="2.5" fill={color}/>
         </svg>
       );
     default:
@@ -1590,7 +1695,7 @@ function HistoryStrip({ history, landscape }) {
           border: `1px solid ${h.outcome==="win"?"rgba(39,174,96,0.5)":h.outcome==="doink"?"rgba(231,76,60,0.55)":h.outcome==="pass"?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.16)"}`,
         }}>
           <span style={{ fontSize:"0.65rem", color:h.outcome==="win"?"#27AE60":h.outcome==="doink"?"#E74C3C":"rgba(245,237,216,0.62)", fontWeight:700, whiteSpace:"nowrap" }}>{h.name}</span>
-          <span style={{ fontSize:"0.65rem", color:"rgba(245,237,216,0.85)", fontWeight:600, whiteSpace:"nowrap" }}>{h.outcome==="win"?`+◆${h.amount}`:h.outcome==="doink"?`💥-◆${h.amount}`:h.outcome==="miss"?`-◆${h.amount}`:"pass"}</span>
+          <span style={{ fontSize:"0.65rem", color:"rgba(245,237,216,0.85)", fontWeight:600, whiteSpace:"nowrap" }}>{h.outcome==="win"?`+◆${h.amount}`:h.outcome==="doink"?`-◆${h.amount}`:h.outcome==="miss"?`-◆${h.amount}`:"pass"}</span>
         </div>
       ))}
     </div>
@@ -1736,9 +1841,9 @@ function RulesPage({ onClose }) {
       </div>
       <div style={{ maxWidth:480, margin:"0 auto" }}>
         {sec("The Basics","To start, everyone replenishes the pot. Each player is dealt two cards. On your turn, you bet whether a third 'hit' card will fall between your two cards in value. Aces are low (value 1). Win and the pot pays you 1:1. Miss and your bet goes to the pot.")}
-        {sec("DOINK 💥","If your hit card matches the rank of either of your two cards — DOINK. You pay double your bet into the pot. Bet ◆10 and doink, you owe ◆20. This is the game.")}
+        {sec("DOINK ","If your hit card matches the rank of either of your two cards — DOINK. You pay double your bet into the pot. Bet ◆10 and doink, you owe ◆20. This is the game.")}
         {sec("Replenish","Whenever the pot hits ◆0, everyone replenishes immediately and play continues. The game starts the same way.")}
-        {sec("Bet Types",<><b style={{color:"#F0C96A"}}>Spread Bet</b> — Hit falls between your cards. Pays 1:1.<br/><br/><b style={{color:"#E74C3C"}}>💥 Doink Bet</b> — Hit MATCHES one of your cards. Pays 7:1.<br/><br/><b style={{color:"#C0392B"}}>💥💥 Double Doink</b> — When you hold a pair, bet that a third card of that rank is the hit. Pays 18:1.<br/><br/><b style={{color:"#9B59B6"}}>✨ Mythical Split</b> — Cards exactly 2 apart. That one middle card pays 12:1.<br/><br/><b style={{color:"#D4A843"}}>🎰 Blind Bet</b> — Bet before cards are dealt. A hit pays 2:1.</>)}
+        {sec("Bet Types",<><b style={{color:"#F0C96A"}}>Spread Bet</b> — Hit falls between your cards. Pays 1:1.<br/><br/><b style={{color:"#E74C3C"}}> Doink Bet</b> — Hit MATCHES one of your cards. Pays 7:1.<br/><br/><b style={{color:"#C0392B"}}> Double Doink</b> — When you hold a pair, bet that a third card of that rank is the hit. Pays 18:1.<br/><br/><b style={{color:"#9B59B6"}}> Mythical Split</b> — Cards exactly 2 apart. That one middle card pays 12:1.<br/><br/><b style={{color:"#D4A843"}}> Blind Bet</b> — Bet before cards are dealt. A hit pays 2:1.</>)}
         {sec("Hand Trading","Buy or sell hands at any point. The buyer plays both their hand AND the bought hand, in original turn order. You collect payment immediately when you sell.")}
         {sec("Insurance","Pay a premium upfront. If you doink, a portion of your penalty is covered.")}
         {sec("Strategy","Wide spreads (A–K) = play big. Narrow spreads = pass or doink bet. Selling a trash hand for chips beats passing. Position matters — going early in a fat pot differs from going late.")}
@@ -1859,7 +1964,7 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
                   <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"0.92rem", color:unlocked?"#F0C96A":"rgba(245,237,216,0.5)", fontWeight:700 }}>{p.name}</div>
                   {unlocked
                     ? <div style={{ fontSize:"0.62rem", color:"rgba(245,237,216,0.45)", marginTop:3 }}>{p.bots} bots · ${p.buyIn}</div>
-                    : <div style={lockBadge}>🔒 Level {p.unlockLevel}</div>}
+                    : <div style={lockBadge}> Level {p.unlockLevel}</div>}
                 </button>
               );
             })}
@@ -1867,7 +1972,7 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
 
           {/* Randomize */}
           <button onClick={randomize} style={{ ...sBtn, width:"100%", marginBottom:18, fontSize:"0.9rem", padding:"12px" }}>
-            🎲 Randomize Unlocked Setup
+             Randomize Unlocked Setup
           </button>
 
           {/* Table Theme */}
@@ -1886,7 +1991,7 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
                   {/* mini felt preview */}
                   <div style={{ height:54, borderRadius:9, background:`radial-gradient(ellipse at 50% 35%, ${t.felt}, ${t.feltDark})`, border:`2px solid ${t.rail}`, marginBottom:6 }}/>
                   <div style={{ fontSize:"0.72rem", color:unlocked?"#F5EDD8":"rgba(245,237,216,0.5)", fontWeight:600 }}>{t.name}</div>
-                  {!unlocked && <div style={lockBadge}>🔒 Level {t.unlockLevel}</div>}
+                  {!unlocked && <div style={lockBadge}> Level {t.unlockLevel}</div>}
                 </button>
               );
             })}
@@ -1911,7 +2016,7 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
                     </div>
                   </div>
                   <div style={{ fontSize:"0.7rem", color:unlocked?"#F5EDD8":"rgba(245,237,216,0.5)", fontWeight:600 }}>{cb.name}</div>
-                  {!unlocked && <div style={lockBadge}>🔒 Level {cb.unlockLevel}</div>}
+                  {!unlocked && <div style={lockBadge}> Level {cb.unlockLevel}</div>}
                 </button>
               );
             })}
@@ -1938,7 +2043,7 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
                     ))}
                   </div>
                   <div style={{ fontSize:"0.7rem", color:unlocked?"#F5EDD8":"rgba(245,237,216,0.5)", fontWeight:600 }}>{cs.name}</div>
-                  {!unlocked && <div style={lockBadge}>🔒 Level {cs.unlockLevel}</div>}
+                  {!unlocked && <div style={lockBadge}> Level {cs.unlockLevel}</div>}
                 </button>
               );
             })}
@@ -1960,7 +2065,7 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
                 }}>
                   <Avatar seed={av.seed} size={46} active={on} name={av.name} isHuman={on}/>
                   <div style={{ fontSize:"0.64rem", color:unlocked?"#F5EDD8":"rgba(245,237,216,0.5)", fontWeight:600, textAlign:"center", lineHeight:1.2 }}>{av.name}</div>
-                  {!unlocked && <div style={{ ...lockBadge, marginTop:0 }}>🔒 Lvl {av.unlockLevel}</div>}
+                  {!unlocked && <div style={{ ...lockBadge, marginTop:0 }}> Lvl {av.unlockLevel}</div>}
                 </button>
               );
             })}
@@ -1976,7 +2081,7 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
           </div>
 
           <button onClick={onShowTutorial} style={{ ...sBtn, width:"100%", fontSize:"0.86rem", padding:"11px" }}>
-            📖 View Tutorial
+             View Tutorial
           </button>
         </div>
       </div>
@@ -2022,7 +2127,7 @@ function SettingRow({ label, options, value, lvl, fmt, onPick }) {
               display:"flex", flexDirection:"column", alignItems:"center", gap:2,
             }}>
               <span>{fmt(opt.value)}</span>
-              {!unlocked && <span style={{ fontSize:"0.56rem", color:"rgba(231,76,60,0.8)", fontWeight:700 }}>🔒 Lvl {opt.unlockLevel}</span>}
+              {!unlocked && <span style={{ fontSize:"0.56rem", color:"rgba(231,76,60,0.8)", fontWeight:700 }}> Lvl {opt.unlockLevel}</span>}
             </button>
           );
         })}
@@ -2062,34 +2167,43 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
     if (t.outcome === "win")
       return { text: `won ◆${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "#27AE60", sym: "✓" };
     if (t.outcome === "doink")
-      return { text: `DOINKED −◆${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "#E74C3C", sym: "💥" };
+      return { text: `DOINKED −◆${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "#E74C3C", sym: "" };
     return { text: `missed −◆${t.amount}${typeLabel?` on ${typeLabel}`:""}`, color: "rgba(245,237,216,0.65)", sym: "✗" };
   };
 
+  // Force the scrollable player-list to open scrolled to the top every time
+  // the recap appears, rather than wherever the browser left it.
+  const listRef = useRef(null);
+  useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; }, []);
+
   return (
     <div role="dialog" aria-modal="true" aria-label={`Round ${round} recap`}
-      style={{ position:"fixed", inset:0, zIndex:260, background:"radial-gradient(ellipse at 50% 30%, rgba(8,18,12,0.97), rgba(2,5,3,0.99))", backdropFilter:"blur(14px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, overflowY:"auto" }}>
+      style={{ position:"fixed", inset:0, zIndex:260, background:"radial-gradient(ellipse at 50% 30%, rgba(8,18,12,0.97), rgba(2,5,3,0.99))", backdropFilter:"blur(14px)", display:"flex", alignItems:"center", justifyContent:"center", padding:"calc(env(safe-area-inset-top) + 16px) 18px calc(env(safe-area-inset-bottom) + 16px)" }}>
+      {/* The card is a flex column: fixed header, ONE scrollable middle (the
+          player rows), fixed footer. Only the middle scrolls — no nested
+          scroll containers — and the action buttons are always reachable. */}
       <div className="pop" style={{
         width:"100%", maxWidth:460,
+        display:"flex", flexDirection:"column",
+        maxHeight:"100%",
         background:"linear-gradient(165deg, rgba(14,28,18,0.96) 0%, rgba(6,12,8,0.98) 100%)",
         border:"1.5px solid rgba(212,168,67,0.45)",
         borderRadius:24,
-        padding:"26px 22px 24px",
         boxShadow:"0 24px 80px rgba(0,0,0,0.96), 0 0 60px rgba(212,168,67,0.15), inset 0 1px 0 rgba(240,201,106,0.22)",
-        maxHeight:"calc(100vh - 40px)", overflowY:"auto"
+        overflow:"hidden",
       }}>
-        {/* Header */}
-        <div style={{ textAlign:"center", marginBottom:18 }}>
+        {/* Fixed header */}
+        <div style={{ textAlign:"center", padding:"22px 22px 12px", flexShrink:0 }}>
           <div style={{ fontSize:"0.62rem", letterSpacing:"0.28em", color:"rgba(212,168,67,0.6)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>Round {round} Recap</div>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.8rem", color:"#F0C96A", fontWeight:900, lineHeight:1, textShadow:"0 0 28px rgba(212,168,67,0.55)" }}>Round Complete</div>
-          <div aria-hidden="true" style={{ height:1.5, width:80, margin:"12px auto 0", background:"linear-gradient(90deg, transparent, rgba(212,168,67,0.6), transparent)" }}/>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.6rem", color:"#F0C96A", fontWeight:900, lineHeight:1, textShadow:"0 0 28px rgba(212,168,67,0.55)" }}>Round Complete</div>
+          <div aria-hidden="true" style={{ height:1.5, width:80, margin:"10px auto 0", background:"linear-gradient(90deg, transparent, rgba(212,168,67,0.6), transparent)" }}/>
         </div>
 
-        {/* Per-player rows with both money and what happened */}
-        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:18 }}>
+        {/* Scrollable middle — player rows. Opens at the top (listRef). */}
+        <div ref={listRef} style={{ overflowY:"auto", padding:"0 22px", display:"flex", flexDirection:"column", gap:7 }}>
           {entries.map(p => (
             <div key={p.id} style={{
-              padding:"10px 14px",
+              padding:"9px 13px",
               background:"rgba(255,255,255,0.03)",
               border:"1px solid rgba(255,255,255,0.07)",
               borderRadius:12,
@@ -2097,8 +2211,8 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
               {/* Top row: avatar + name on left, net delta + final chips on right */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
-                  <Avatar seed={p.avatarSeed} size={28} name={p.name} isHuman={!p.isBot}/>
-                  <div style={{ fontSize:"0.92rem", color:"#F5EDD8", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.name}</div>
+                  <Avatar seed={p.avatarSeed} size={26} name={p.name} isHuman={!p.isBot}/>
+                  <div style={{ fontSize:"0.9rem", color:"#F5EDD8", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.name}</div>
                 </div>
                 <div style={{ display:"flex", alignItems:"baseline", gap:10, flexShrink:0 }}>
                   <div style={{
@@ -2113,11 +2227,11 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
               </div>
               {/* Inline turn(s) — what they actually did */}
               {p.turns.length > 0 && (
-                <div style={{ display:"flex", flexDirection:"column", gap:3, marginTop:7, paddingLeft:38 }}>
+                <div style={{ display:"flex", flexDirection:"column", gap:3, marginTop:6, paddingLeft:36 }}>
                   {p.turns.map((t, i) => {
                     const L = labelFor(t);
                     return (
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:6, fontSize:"0.78rem" }}>
+                      <div key={i} style={{ display:"flex", alignItems:"center", gap:6, fontSize:"0.76rem" }}>
                         <span style={{ color: L.color, fontWeight:800, minWidth:14, textAlign:"center" }}>{L.sym}</span>
                         <span style={{ color: L.color, fontWeight:600 }}>{L.text}</span>
                       </div>
@@ -2129,35 +2243,35 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
           ))}
         </div>
 
-        {/* Pot */}
-        <div style={{ textAlign:"center", padding:"10px 14px", background:"rgba(212,168,67,0.06)", border:"1px solid rgba(212,168,67,0.18)", borderRadius:12, marginBottom:18 }}>
-          <div style={{ fontSize:"0.58rem", letterSpacing:"0.18em", color:"rgba(212,168,67,0.5)", fontWeight:700, textTransform:"uppercase" }}>Pot Remaining</div>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.5rem", color:"#F0C96A", fontWeight:900, lineHeight:1.1 }}>◆{pot}</div>
-        </div>
-
-        <div style={{ display:"flex", justifyContent:"center", gap:10, flexWrap:"wrap" }}>
-          {(() => {
-            const human = humanPlayerId != null ? players.find(p => p.id === humanPlayerId) : players.find(p => !p.isBot);
-            const cash = human?.chips || 0;
-            // A broke human can't continue — show a single clear end button.
-            if (mode === "career" && cash <= 0) {
-              return (
-                <button onClick={onCashOut || onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>
-                  End Session →
-                </button>
-              );
-            }
-            return (
-              <>
-                <button onClick={onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>Next Round →</button>
-                {mode === "career" && onCashOut && (
-                  <button onClick={onCashOut} style={{ ...sBtn, fontSize:"1.05rem", padding:"15px 24px", color:"#F0C96A", border:"1.5px solid rgba(212,168,67,0.6)" }}>
-                    💰 Leave Table (${cash})
+        {/* Fixed footer — pot + actions, always reachable */}
+        <div style={{ flexShrink:0, padding:"12px 22px 20px" }}>
+          <div style={{ textAlign:"center", padding:"8px 14px", background:"rgba(212,168,67,0.06)", border:"1px solid rgba(212,168,67,0.18)", borderRadius:12, marginBottom:14 }}>
+            <div style={{ fontSize:"0.58rem", letterSpacing:"0.18em", color:"rgba(212,168,67,0.5)", fontWeight:700, textTransform:"uppercase" }}>Pot Remaining</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.35rem", color:"#F0C96A", fontWeight:900, lineHeight:1.1 }}>◆{pot}</div>
+          </div>
+          <div style={{ display:"flex", justifyContent:"center", gap:10, flexWrap:"wrap" }}>
+            {(() => {
+              const human = humanPlayerId != null ? players.find(p => p.id === humanPlayerId) : players.find(p => !p.isBot);
+              const cash = human?.chips || 0;
+              if (mode === "career" && cash <= 0) {
+                return (
+                  <button onClick={onCashOut || onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>
+                    End Session →
                   </button>
-                )}
-              </>
-            );
-          })()}
+                );
+              }
+              return (
+                <>
+                  <button onClick={onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>Next Round →</button>
+                  {mode === "career" && onCashOut && (
+                    <button onClick={onCashOut} style={{ ...sBtn, fontSize:"1.05rem", padding:"15px 24px", color:"#F0C96A", border:"1.5px solid rgba(212,168,67,0.6)" }}>
+                      Leave Table (◆{cash})
+                    </button>
+                  )}
+                </>
+              );
+            })()}
+          </div>
         </div>
       </div>
     </div>
@@ -2171,9 +2285,9 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
 function SoldHandPlayback({ data, onDismiss }) {
   const { seller, buyer, cards, hitCard, betType, amount, outcome, payout, sellerPayout } = data;
   const [a, b] = cards;
-  const betLabel = betType==="doink"?"💥 Doink Bet":betType==="doubledoink"?"💥💥 Double Doink":betType==="mythical"?"✨ Mythical":"Spread Bet";
+  const betLabel = betType==="doink"?"Doink Bet":betType==="doubledoink"?"Double Doink":betType==="mythical"?"Mythical":"Spread Bet";
   const outcomeColor = outcome==="win"?"#27AE60":outcome==="doink"?"#E74C3C":"rgba(245,237,216,0.45)";
-  const outcomeLabel = outcome==="win"?"WIN 🎉":outcome==="doink"?"💥 DOINK!":outcome==="miss"?"MISS":null;
+  const outcomeLabel = outcome==="win"?"WIN":outcome==="doink"?"DOINK!":outcome==="miss"?"MISS":null;
   const sellerCut = sellerPayout > 0;
   return (
     <div role="dialog" aria-modal="true" aria-label="Bought-hand playback"
@@ -2240,7 +2354,7 @@ function BetMarker({ marker, playerName, landscape }) {
   const color = type === "doink" ? "#E74C3C" : type === "doubledoink" ? "#C0392B" : type === "mythical" ? "#9B59B6" : type === "blind" ? "#D4A843" : "#F0C96A";
   const bg = type === "doink" ? "rgba(231,76,60,0.18)" : type === "mythical" ? "rgba(155,89,182,0.18)" : type === "blind" ? "rgba(212,168,67,0.18)" : "rgba(240,201,106,0.14)";
   const outcomeColor = outcome === "win" ? "#27AE60" : outcome === "doink" ? "#E74C3C" : outcome === "miss" ? "rgba(245,237,216,0.6)" : null;
-  const outcomeLabel = outcome === "win" ? "✓ WIN" : outcome === "doink" ? "💥 DOINK" : outcome === "miss" ? "MISS" : null;
+  const outcomeLabel = outcome === "win" ? "✓ WIN" : outcome === "doink" ? "DOINK" : outcome === "miss" ? "MISS" : null;
   // Build an opaque background: dark solid base + a subtle tinted overlay
   // for the bet-type color so cards behind the marker don't bleed through.
   const opaqueBg = outcomeColor
@@ -2380,7 +2494,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   // True briefly while the deck riffle/shuffle animation plays.
   const [shuffling, setShuffling] = useState(false);
   const [round, setRound] = useState(1);
-  const [log, setLog] = useState([{ msg: "Welcome to DOINK! 🃏", type: "info" }]);
+  const [log, setLog] = useState([{ msg: "Welcome to DOINK! ", type: "info" }]);
   const [sheet, setSheet] = useState(null);
   const [betVal, setBetVal] = useState(0);
   const [locked, setLocked] = useState(false);
@@ -2478,7 +2592,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     setPot(p);
     potRef.current = p;
     flashPot(p);
-    addLog(`💰 Pot hit ◆0 — everyone replenishes ◆${replenishAmt}!`);
+    addLog(` Pot hit ◆0 — everyone replenishes ◆${replenishAmt}!`);
     emitAch(EVENTS.POT_REPLENISHED, {});
   };
 
@@ -2830,7 +2944,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
             chipDelta = amount + winnings;
             pd = -winnings;
             outcome = "win";
-            addLog(`💥🎉 ${p.name} DOINK BET HITS! +◆${winnings}`, "win");
+            addLog(` ${p.name} DOINK BET HITS! +◆${winnings}`, "win");
             showComment(p.name, getComment("doinkBetHit"));
           } else {
             pd = amount;
@@ -2850,7 +2964,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
             chipDelta = amount + winnings;
             pd = -winnings;
             outcome = "win";
-            addLog(`💥💥 ${p.name} DOUBLE DOINK HITS! +◆${winnings}`, "win");
+            addLog(` ${p.name} DOUBLE DOINK HITS! +◆${winnings}`, "win");
             showComment(p.name, getComment("doinkBetHit"));
           } else {
             pd = amount;
@@ -2864,14 +2978,14 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
             chipDelta = amount + winnings;
             pd = -winnings;
             outcome = "win";
-            addLog(`✨ ${p.name} MYTHICAL! +◆${winnings}`, "win");
+            addLog(` ${p.name} MYTHICAL! +◆${winnings}`, "win");
             showComment(p.name, getComment("mythical"));
           } else if (isDoinkCard(a, b, hitCard)) {
             const cov = p.insurance?.coverage || 0;
             chipDelta = -(amount - cov);
             pd = amount * 2 - cov;
             outcome = "doink";
-            addLog(`💥 ${p.name} DOINKS! -◆${amount * 2}`, "doink");
+            addLog(` ${p.name} DOINKS! -◆${amount * 2}`, "doink");
             showComment(p.name, getComment("doink"));
           } else {
             pd = amount;
@@ -2891,7 +3005,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
             chipDelta = -(amount - cov);
             pd = amount * 2 - cov;
             outcome = "doink";
-            addLog(`💥 ${p.name} DOINKS! -◆${amount * 2}`, "doink");
+            addLog(` ${p.name} DOINKS! -◆${amount * 2}`, "doink");
             showComment(p.name, getComment("doink"));
           } else {
             pd = amount;
@@ -2958,7 +3072,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
         if (sellerPayout > 0) {
           const sellerName = playersRef.current.find(x => x.id === slot.sellerId)?.name || "Seller";
-          addLog(`💰 ${sellerName} gets +◆${sellerPayout} (${sellerCut}% of winnings).`, "win");
+          addLog(` ${sellerName} gets +◆${sellerPayout} (${sellerCut}% of winnings).`, "win");
         }
 
         if (!slot.isBought) setSeatAnims(prev => ({ ...prev, [p.id]: outcome }));
@@ -3122,8 +3236,8 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     }
     const sellerCards = seller.cards;
     const pctClause = offer.pct ? ` + ${offer.pct}% of winnings` : "";
-    addLog(`🤝 ${seller.name} sold hand to ${buyer.name} for ◆${chipTransfer}${pctClause}.`);
-    showToast(`🤝 ${seller.name} → ${buyer.name}: ◆${chipTransfer}${pctClause}`);
+    addLog(` ${seller.name} sold hand to ${buyer.name} for ◆${chipTransfer}${pctClause}.`);
+    showToast(` ${seller.name} → ${buyer.name}: ◆${chipTransfer}${pctClause}`);
 
     // ── CAREER STATS — record human trade involvement ──
     if (isCareer) {
@@ -3280,7 +3394,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         const offer = { sellerId: bot.id, chips: upfront, pct, desc, kind: pct > 0 ? "hybrid" : "chips" };
         setTimeout(() => {
           if (pendingSellOfferRef.current) return;
-          addLog(`📢 ${bot.name} sells hand to the table: ${desc}.`);
+          addLog(` ${bot.name} sells hand to the table: ${desc}.`);
           setPendingSellOffer(offer);
         }, delay);
         delay += 1400;
@@ -3403,16 +3517,18 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     : "";
 
   return (
-    <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:landscape?"row":"column", background:"radial-gradient(ellipse at 50% 20%,#0E2A14 0%,#060D08 65%,#030806 100%)", overflow:"hidden", paddingTop:"env(safe-area-inset-top)" }}>
+    <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:landscape?"row":"column", background:"radial-gradient(ellipse at 50% 20%,#0E2A14 0%,#060D08 65%,#030806 100%)", overflow:"hidden" }}>
 
       {/* ── Compact Casino HUD — logo · round/pot · rules/exit ──
           A clean 3-column grid: logo left, Round + Pot centered, controls
-          right. Reduced height, aligned baseline, mobile-native. */}
+          right. The header itself owns the safe-area inset (the outer
+          container must NOT also add it, or the header is pushed down by a
+          full notch-height of dead space). */}
       <div style={{
         display:landscape?"flex":"grid",
         gridTemplateColumns: landscape ? undefined : "1fr auto 1fr",
         alignItems:"center",
-        padding:landscape?"10px 14px":"calc(env(safe-area-inset-top) + 6px) 14px 8px",
+        padding:landscape?"10px 14px":"calc(env(safe-area-inset-top) + 4px) 14px 8px",
         zIndex:30, flexShrink:0,
         background:"linear-gradient(180deg, rgba(8,16,10,0.95) 0%, rgba(3,8,5,0.82) 70%, rgba(3,8,5,0.25) 100%)",
         backdropFilter:"blur(14px)",
@@ -3569,8 +3685,6 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
         <PotDisplay pot={pot} potAnim={potAnim} delta={potDelta} landscape={landscape} />
 
-        <HistoryStrip history={history} landscape={landscape} />
-
         {/* Bot "thinking" banner — large, centered, unmistakable */}
         {botThinking !== null && !betMarker && (() => {
           const bp = players.find(p => p.id === botThinking);
@@ -3712,7 +3826,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
               </div>
               {slotAnim && (
                 <div style={{ fontSize:slotAnim==="doink"?"0.78rem":"0.6rem", padding:slotAnim==="doink"?"4px 12px":"2px 8px", borderRadius:10, fontWeight:700, background:slotAnim==="win"?"rgba(39,174,96,0.2)":slotAnim==="doink"?"rgba(231,76,60,0.28)":"rgba(255,255,255,0.05)", border:slotAnim==="win"?"1.5px solid rgba(39,174,96,0.55)":slotAnim==="doink"?"2px solid rgba(231,76,60,0.75)":"1px solid transparent", color:slotAnim==="win"?"#27AE60":slotAnim==="doink"?"#E74C3C":slotAnim==="miss"?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.2)", textShadow:slotAnim==="doink"?"0 0 18px rgba(231,76,60,0.9)":slotAnim==="win"?"0 0 10px rgba(39,174,96,0.7)":"none" }}>
-                  {slotAnim==="win"?"WIN":slotAnim==="doink"?"💥 DOINK!":slotAnim==="miss"?"MISS":"PASS"}
+                  {slotAnim==="win"?"WIN":slotAnim==="doink"?"DOINK!":slotAnim==="miss"?"MISS":"PASS"}
                 </div>
               )}
               {p.comment && (
@@ -3785,7 +3899,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
             {/* Player actions — available during the buy phase */}
             {phase === "preBuy" && humanPlayer && (
               <>
-                <button onClick={() => { setOpenDrawer(null); setTradeMode("buy"); setSheet("trade"); }} style={{ ...gBtn, width:"100%", fontSize:"0.9rem" }}>🤝 Buy a Hand</button>
+                <button onClick={() => { setOpenDrawer(null); setTradeMode("buy"); setSheet("trade"); }} style={{ ...gBtn, width:"100%", fontSize:"0.9rem" }}> Buy a Hand</button>
                 {!pendingSellOffer && (
                   <button onClick={() => { setOpenDrawer(null); setTradeMode("sell"); setSheet("trade"); }} style={{ ...sBtn, width:"100%", fontSize:"0.9rem" }}>🏷️ Sell My Hand</button>
                 )}
@@ -3804,11 +3918,11 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
       {/* ── PREBUY PHASE: human can buy hands before bidding ── */}
       {phase==="preBuy" && !sheet && !pendingSellOffer && humanPlayer && (
-        <div className="pop" style={{ flexShrink:0, padding:`16px 22px calc(20px + env(safe-area-inset-bottom))`, zIndex:28, background:"linear-gradient(0deg,rgba(3,6,4,0.99),rgba(3,6,4,0.85))", borderTop:"1px solid rgba(212,168,67,0.18)", textAlign:"center" }}>
+        <div className="pop" style={{ position:"absolute", left:0, right:0, bottom:0, padding:`16px 22px calc(20px + env(safe-area-inset-bottom))`, zIndex:28, background:"linear-gradient(0deg,rgba(3,6,4,0.99),rgba(3,6,4,0.85))", borderTop:"1px solid rgba(212,168,67,0.18)", textAlign:"center" }}>
           <div style={{ fontSize:"0.82rem", color:"rgba(245,237,216,0.55)", fontWeight:500, marginBottom:6 }}>Cards are dealt</div>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", color:"#D4A843", fontWeight:700, marginBottom:14 }}>Buy a hand, or wait for bidding</div>
           <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
-            <button onClick={() => { setTradeMode("buy"); setSheet("trade"); }} style={{ ...gBtn, fontSize:"0.95rem" }}>🤝 Buy a Hand</button>
+            <button onClick={() => { setTradeMode("buy"); setSheet("trade"); }} style={{ ...gBtn, fontSize:"0.95rem" }}> Buy a Hand</button>
             <button onClick={() => { setPhase("betting"); addLog("Bidding begins."); }} style={{ ...sBtn, fontSize:"0.95rem" }}>Skip to Bidding →</button>
           </div>
         </div>
@@ -3816,7 +3930,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
       {/* ── HUMAN'S OWN SELL OFFER STATUS ── */}
       {pendingSellOffer && pendingSellOffer.sellerId === humanPlayer?.id && !sheet && (
-        <div className="pop" style={{ flexShrink:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:29, background:"linear-gradient(0deg,rgba(8,14,4,0.99),rgba(8,14,4,0.9))", borderTop:"2px solid rgba(212,168,67,0.3)", textAlign:"center" }}>
+        <div className="pop" style={{ position:"absolute", left:0, right:0, bottom:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:29, background:"linear-gradient(0deg,rgba(8,14,4,0.99),rgba(8,14,4,0.9))", borderTop:"2px solid rgba(212,168,67,0.3)", textAlign:"center" }}>
           <div style={{ fontSize:"0.75rem", color:"rgba(245,237,216,0.5)", fontWeight:500, marginBottom:4 }}>Your sell offer is live</div>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.15rem", color:"#F0C96A", fontWeight:700, marginBottom:10 }}>{pendingSellOffer.desc}</div>
           <div style={{ fontSize:"0.75rem", color:"rgba(245,237,216,0.4)", marginBottom:12 }}>Waiting for someone to accept…</div>
@@ -3829,7 +3943,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         const seller = players.find(p => p.id === pendingSellOffer.sellerId);
         const canAfford = (humanPlayer.chips || 0) >= (pendingSellOffer.chips || 0);
         return (
-          <div className="pop" style={{ flexShrink:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:29, background:"linear-gradient(0deg,rgba(2,8,14,0.99),rgba(2,8,14,0.92))", borderTop:"2px solid rgba(212,168,67,0.3)" }}>
+          <div className="pop" style={{ position:"absolute", left:0, right:0, bottom:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:29, background:"linear-gradient(0deg,rgba(2,8,14,0.99),rgba(2,8,14,0.92))", borderTop:"2px solid rgba(212,168,67,0.3)" }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
               <Avatar seed={seller?.avatarSeed||0} size={40} active name={seller?.name} isHuman={seller?seller.isBot===false:false} />
               <div style={{ flex:1 }}>
@@ -3850,13 +3964,13 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
       {/* ── LET'S ROLL ── */}
       {waitingForRoll && !sheet && phase==="betting" && (
-        <div className="pop" style={{ flexShrink:0, padding:`16px 22px calc(20px + env(safe-area-inset-bottom))`, zIndex:28, background:"linear-gradient(0deg,rgba(3,6,4,0.99),rgba(3,6,4,0.85))", borderTop:"1px solid rgba(212,168,67,0.18)", textAlign:"center" }}>
+        <div className="pop" style={{ position:"absolute", left:0, right:0, bottom:0, padding:`16px 22px calc(20px + env(safe-area-inset-bottom))`, zIndex:28, background:"linear-gradient(0deg,rgba(3,6,4,0.99),rgba(3,6,4,0.85))", borderTop:"1px solid rgba(212,168,67,0.18)", textAlign:"center" }}>
           <div style={{ fontSize:"0.82rem", color:"rgba(245,237,216,0.5)", fontWeight:500, marginBottom:6 }}>
             {curSlot?.isBought?"Time to play your bought hand":"Cards are dealt — you're up"}
           </div>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.1rem", color:"#D4A843", fontWeight:700, marginBottom:14 }}>{curPlayer?.name}</div>
           <button onClick={() => setWaitingForRoll(false)} style={{ ...gBtn, fontSize:"1rem", padding:"14px 36px" }}>
-            {curSlot?.isBought?"Play Bought Hand 🃏":"Let's Roll 🎲"}
+            {curSlot?.isBought?"Play Bought Hand ":"Let's Roll "}
           </button>
         </div>
       )}
@@ -3867,7 +3981,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         const cantBet = (curPlayer?.chips || 0) <= 0 || pot <= 0;
         return (
         <div className="pop" style={{
-          flexShrink:0,
+          position:"absolute", left:0, right:0, bottom:0,
           padding:`16px 18px calc(14px + env(safe-area-inset-bottom))`,
           zIndex:28,
           background:"linear-gradient(180deg, rgba(8,18,11,0.78) 0%, rgba(3,8,5,0.96) 28%, rgba(3,8,5,1) 100%)",
@@ -3879,6 +3993,9 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
             ? "0 -8px 32px rgba(212,168,67,0.18), inset 0 1px 0 rgba(212,168,67,0.18)"
             : "0 -8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(212,168,67,0.08)",
         }}>
+          {/* Pinned to the bottom (position:absolute) so opening the action
+              panel overlays the empty felt below the human seat — the table
+              and seats no longer shift up when controls appear. */}
           {curSlot?.isBought ? (
             <div style={{ textAlign:"center", fontFamily:"'Playfair Display',serif", fontSize:"0.78rem", color:"#F0C96A", fontWeight:700, letterSpacing:"0.12em", marginBottom:8, textTransform:"uppercase" }}>♦ Bought Hand ♦</div>
           ) : (
@@ -3889,7 +4006,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
             <div style={{ textAlign:"center", flex:1, maxWidth:160 }}>
               <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", fontWeight:700, color:"#D4A843", marginBottom:2 }}>{curPlayer?.name}</div>
               <div style={{ fontSize:"0.74rem", color:"rgba(245,237,216,0.5)", fontWeight:500, marginBottom:8 }}>
-                {slotSpread?.mythical?"✨ Mythical Spread!":slotSpread?.v===0?"⚠️ Same Rank":`Spread of ${slotSpread?.v}`}
+                {slotSpread?.mythical?" Mythical Spread!":slotSpread?.v===0?"⚠️ Same Rank":`Spread of ${slotSpread?.v}`}
               </div>
               {hintsOn && curSlot?.cards && <HintBar cards={curSlot.cards}/>}
               {hintsOn && rec && (
@@ -3911,16 +4028,16 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
                 <span style={{ fontSize:"0.62rem", fontWeight:600, opacity:0.8 }}>Spread {slotSpread.v} · pays 1:1</span>
               </button>}
             <button onClick={()=>{setBetVal(0);setSheet("doinkBet");}} disabled={cantBet} style={{...dBtn, opacity:cantBet?0.4:1, display:"flex", flexDirection:"column", lineHeight:1.15, padding:"9px 16px"}}>
-              <span>💥 DOINK BET</span>
+              <span> DOINK BET</span>
               <span style={{ fontSize:"0.62rem", fontWeight:600, opacity:0.85 }}>pays 7:1</span>
             </button>
             {slotSpread?.mythical&&<button onClick={()=>{setBetVal(0);setSheet("mythical");}} disabled={cantBet} style={{...pBtn, opacity:cantBet?0.4:1, display:"flex", flexDirection:"column", lineHeight:1.15, padding:"9px 16px"}}>
-              <span>✨ MYTHICAL</span>
+              <span> MYTHICAL</span>
               <span style={{ fontSize:"0.62rem", fontWeight:600, opacity:0.85 }}>pays 12:1</span>
             </button>}
             {/* Double Doink — only when the player holds a pair (spread 0). */}
             {slotSpread?.v===0&&<button onClick={()=>{setBetVal(0);setSheet("doubledoink");}} disabled={cantBet} style={{...dBtn, background:"linear-gradient(145deg,#7A1212,#C0392B)", opacity:cantBet?0.4:1, display:"flex", flexDirection:"column", lineHeight:1.15, padding:"9px 16px"}}>
-              <span>💥💥 DOUBLE DOINK</span>
+              <span> DOUBLE DOINK</span>
               <span style={{ fontSize:"0.62rem", fontWeight:600, opacity:0.85 }}>pays 18:1</span>
             </button>}
             <button onClick={humanPass} style={sBtn}>PASS</button>
@@ -3938,8 +4055,8 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
           {showSecondary && (
             <div className="fade-up" style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap", marginTop:4 }}>
               {!curSlot?.isBought&&<button onClick={()=>{setShowSecondary(false);setSheet("insurance");}} disabled={cantBet} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px", opacity:cantBet?0.4:1 }}>🛡️ Insurance</button>}
-              <button onClick={()=>{setShowSecondary(false);setTradeMode("buy");setSheet("trade");}} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px" }}>🤝 Buy Hand</button>
-              <button onClick={()=>{setShowSecondary(false);setTradeMode("sell");setSheet("trade");}} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px" }}>💰 Sell Hand</button>
+              <button onClick={()=>{setShowSecondary(false);setTradeMode("buy");setSheet("trade");}} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px" }}> Buy Hand</button>
+              <button onClick={()=>{setShowSecondary(false);setTradeMode("sell");setSheet("trade");}} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px" }}> Sell Hand</button>
             </div>
           )}
         </div>
@@ -3948,7 +4065,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
       {/* ── INCOMING OFFER ── */}
       {(incomingOffer || incomingCounter) && !sheet && isHumanTurn && (
-        <div className="pop" style={{ flexShrink:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:29, background:"linear-gradient(0deg,rgba(2,8,14,0.99),rgba(2,8,14,0.92))", borderTop:"2px solid rgba(212,168,67,0.3)" }}>
+        <div className="pop" style={{ position:"absolute", left:0, right:0, bottom:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:29, background:"linear-gradient(0deg,rgba(2,8,14,0.99),rgba(2,8,14,0.92))", borderTop:"2px solid rgba(212,168,67,0.3)" }}>
           {(() => {
             const offer = incomingOffer || incomingCounter;
             const humanIsSeller = offer.sellerId === humanPlayer?.id;
@@ -3971,7 +4088,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
                 <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
                   <button onClick={() => acceptOffer(offer)} style={{ ...gBtn, background:"linear-gradient(145deg,#0E4A1E,#27AE60)", color:"#fff", fontSize:"0.95rem" }}>Accept ✓</button>
                   <button onClick={declineOffer} style={{ ...sBtn, fontSize:"0.95rem" }}>Decline</button>
-                  <button onClick={() => setSheet("counter")} style={{ ...sBtn, fontSize:"0.95rem" }}>Counter ⚖️</button>
+                  <button onClick={() => setSheet("counter")} style={{ ...sBtn, fontSize:"0.95rem" }}>Counter ️</button>
                 </div>
               </>
             );
@@ -3981,13 +4098,13 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
       {/* ── BLIND BET PANEL ── */}
       {phase==="blindBet" && humanPlayer && humanPlayer.chips > 0 && !sheet && (
-        <div className="pop" style={{ flexShrink:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:28, background:"linear-gradient(0deg,rgba(3,6,4,0.99),rgba(3,6,4,0.88))", borderTop:"1px solid rgba(212,168,67,0.15)" }}>
+        <div className="pop" style={{ position:"absolute", left:0, right:0, bottom:0, padding:`14px 18px calc(16px + env(safe-area-inset-bottom))`, zIndex:28, background:"linear-gradient(0deg,rgba(3,6,4,0.99),rgba(3,6,4,0.88))", borderTop:"1px solid rgba(212,168,67,0.15)" }}>
           <div style={{ textAlign:"center", marginBottom:12 }}>
             <span style={{ fontSize:"1rem", fontWeight:700, color:"#D4A843" }}>{humanPlayer.name}</span>
             <span style={{ fontSize:"0.85rem", color:"rgba(245,237,216,0.45)", marginLeft:8 }}>— blind bet before your cards?</span>
           </div>
           <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
-            <button onClick={() => { setBetVal(0); setSheet("blindBet"); }} style={gBtn}>🎰 Blind Bet</button>
+            <button onClick={() => { setBetVal(0); setSheet("blindBet"); }} style={gBtn}> Blind Bet</button>
             <button onClick={() => { setSheet(null); startDealing(); }} style={sBtn}>Skip</button>
           </div>
         </div>
@@ -4009,7 +4126,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
       {/* ═══ SHEETS ═══ */}
       {sheet==="blindBet" && (
-        <Sheet title="🎰 Blind Bet" subtitle="Bet before your cards are dealt. A hit pays 2× from the pot." onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="Blind Bet" subtitle="Bet before your cards are dealt. A hit pays 2× from the pot." onClose={() => setSheet(null)} landscape={landscape}>
           <ChipSelector denoms={denoms} max={Math.min(pot, humanPlayer?.chips||0)} value={betVal} onChange={setBetVal}/>
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
             <button onClick={humanBlindBet} disabled={betVal===0} style={{ ...gBtn, opacity:betVal===0?0.4:1 }}>Blind Bet ${betVal||""}</button>
@@ -4036,7 +4153,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         // so you can always take a swing even if the pot is small.
         const max = Math.min(curPlayer?.chips || 0, pot);
         return (
-        <Sheet title="💥 Doink Bet" subtitle={`Bet the hit card MATCHES one of yours. Pays 7× — but never more than the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="Doink Bet" subtitle={`Bet the hit card MATCHES one of yours. Pays 7× — but never more than the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
           {max <= 0
             ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>The pot is empty — nothing to win right now.</div>
             : <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>}
@@ -4053,7 +4170,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         // 18×, capped to the pot. Bet limited by chips and pot.
         const max = Math.min(curPlayer?.chips || 0, pot);
         return (
-        <Sheet title="💥💥 Double Doink" subtitle={`You hold a pair. Bet that a third card of that rank is the hit. Pays 18× — capped to the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="Double Doink" subtitle={`You hold a pair. Bet that a third card of that rank is the hit. Pays 18× — capped to the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
           {max <= 0
             ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>The pot is empty — nothing to win right now.</div>
             : <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>}
@@ -4069,7 +4186,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         // by chips and pot.
         const max = Math.min(curPlayer?.chips || 0, pot);
         return (
-        <Sheet title="✨ Mythical Split" subtitle={`Your cards are exactly 2 apart. Pays 12× — but never more than the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="Mythical Split" subtitle={`Your cards are exactly 2 apart. Pays 12× — but never more than the pot. Max bet ◆${max}.`} onClose={() => setSheet(null)} landscape={landscape}>
           {max <= 0
             ? <div style={{ textAlign:"center", padding:"20px 16px", color:"rgba(245,237,216,0.55)", fontSize:"0.9rem" }}>The pot is empty — nothing to win right now.</div>
             : <ChipSelector denoms={denoms} max={max} value={betVal} onChange={setBetVal}/>}
@@ -4093,7 +4210,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         </Sheet>
       )}
       {sheet==="trade" && tradeMode==="sell" && (
-        <Sheet title="💰 Sell Your Hand" subtitle="Broadcast your terms to the table. The first player to accept buys your hand. They pay you upfront and play your cards. If they win, you get your % of their winnings." onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="Sell Your Hand" subtitle="Broadcast your terms to the table. The first player to accept buys your hand. They pay you upfront and play your cards. If they win, you get your % of their winnings." onClose={() => setSheet(null)} landscape={landscape}>
           {/* The seller is always the HUMAN — use humanPlayer, not curPlayer
               (the current turn slot), so selling works regardless of whose
               turn it is. */}
@@ -4122,7 +4239,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
               };
               setPendingSellOffer(sellOffer);
               setSheet(null); setTradeMode(null);
-              addLog(`📢 ${human.name} sells hand to the table: ${offerData.desc}.`);
+              addLog(` ${human.name} sells hand to the table: ${offerData.desc}.`);
               // Trigger bot evaluations
               setTimeout(() => evaluateBotSellResponses(sellOffer), 600);
             }}
@@ -4130,7 +4247,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         </Sheet>
       )}
       {sheet==="trade" && tradeMode==="buy" && (
-        <Sheet title="🤝 Buy a Hand" subtitle="Offer chips (plus optional % of winnings) for a specific player's hand. You play both yours and theirs, in order." onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title=" Buy a Hand" subtitle="Offer chips (plus optional % of winnings) for a specific player's hand. You play both yours and theirs, in order." onClose={() => setSheet(null)} landscape={landscape}>
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             {/* The buyer is always the HUMAN — never `curPlayer` (the current
                 turn slot), which may be a bot or null and caused bought hands
@@ -4159,7 +4276,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         </Sheet>
       )}
       {sheet==="counter"&&(incomingOffer||incomingCounter)&&(
-        <Sheet title="⚖️ Counter Offer" subtitle={`Countering ${players.find(p=>p.id===(incomingOffer||incomingCounter).buyerId)?.name}'s offer`} onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title="️ Counter Offer" subtitle={`Countering ${players.find(p=>p.id===(incomingOffer||incomingCounter).buyerId)?.name}'s offer`} onClose={() => setSheet(null)} landscape={landscape}>
           <OfferBuilder denoms={denoms} maxChips={humanPlayer?.chips||0} label="Send Counter" onCancel={() => setSheet(null)}
             onConfirm={offerData => {
               const orig=incomingOffer||incomingCounter;
@@ -4208,32 +4325,32 @@ function Tutorial({ onClose }) {
   const [step, setStep] = useState(0);
   const steps = [
     {
-      icon: "🃏",
+      icon: "",
       title: "Welcome to DOINK",
       body: "DOINK is a card-betting game of pure chaos. The pot is everyone's money. You bet against it on every hand. Win and you take a piece. Doink, and you pay the pot DOUBLE.",
     },
     {
-      icon: "🎴",
+      icon: "",
       title: "Your Hand",
       body: "You get dealt two cards. You bet whether a third card — the 'hit' — falls between them in rank value. Aces are low.\n\nA hand of (3, J) is great — most cards fall between. A hand of (6, 7) is brutal — almost nothing fits.",
     },
     {
-      icon: "💥",
+      icon: "",
       title: "The DOINK",
       body: "If the hit card matches one of YOUR card ranks, you DOINK. You pay the pot 2× your bet.\n\nThis is the game's signature pain. The narrower your spread, the higher the risk.",
     },
     {
-      icon: "🎰",
+      icon: "",
       title: "Bet Types",
-      body: "Spread Bet — bet between. Pays 1:1.\n💥 Doink Bet — bet on a MATCH. Pays 7:1.\n💥💥 Double Doink — hold a pair, bet a third of that rank. Pays 18:1.\n✨ Mythical Split — cards exactly 2 apart. The middle card pays 12:1.\n🎰 Blind Bet — before cards dealt. Pays 2:1.",
+      body: "Spread Bet — bet between. Pays 1:1.\n Doink Bet — bet on a MATCH. Pays 7:1.\n Double Doink — hold a pair, bet a third of that rank. Pays 18:1.\n Mythical Split — cards exactly 2 apart. The middle card pays 12:1.\n Blind Bet — before cards dealt. Pays 2:1.",
     },
     {
-      icon: "🤝",
+      icon: "",
       title: "Trade Hands",
       body: "Before bidding, you can buy hands from other players. During the round, you can sell yours to the table — broadcast your terms and the first to accept takes over.\n\nIf they win, they pay you your agreed % of winnings.",
     },
     {
-      icon: "♻️",
+      icon: "️",
       title: "Replenish",
       body: "When the pot hits ◆0, everyone replenishes — pays back in — and play continues. The game keeps going until someone busts.\n\nReady?",
     },
@@ -4299,7 +4416,7 @@ function UnlockRewardPopup({ milestone, onClose }) {
         animation:"popIn .3s cubic-bezier(.16,1,.3,1) both",
       }}>
         <div style={{ textAlign:"center", marginBottom:18 }}>
-          <div style={{ fontSize:"2.4rem", marginBottom:6 }}>🔓</div>
+          <div style={{ fontSize:"2.4rem", marginBottom:6 }}></div>
           <div style={{ fontSize:"0.6rem", letterSpacing:"0.24em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase" }}>Level {milestone} Reached</div>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.5rem", color:"#F0C96A", fontWeight:900, marginTop:4, textShadow:"0 0 24px rgba(212,168,67,0.5)" }}>{data.title}</div>
         </div>
@@ -4320,16 +4437,244 @@ function UnlockRewardPopup({ milestone, onClose }) {
 // ─────────────────────────────────────────────────────────
 // HOME SCREEN — chooses between Career, Quick Play, Tutorial
 // ─────────────────────────────────────────────────────────
-function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, isGuest, onSignOut, onSignIn, onLeaderboard }) {
+// ─────────────────────────────────────────────────────────
+// SETTINGS — Account, Notifications, Sound & Haptics, Help,
+// About DOINK, Legal, Danger Zone. (Sound & Haptics is a
+// placeholder filled in by J15.)
+// ─────────────────────────────────────────────────────────
+function SettingsScreen({ career, isGuest, onBack, onResetCareer, onOpenLegal, onSignOut, onRequireSignIn }) {
+  // Notifications toggle — placeholder. Persisted to localStorage so the
+  // choice sticks; no notification system is wired to it yet.
+  const [notif, setNotif] = useState(() => {
+    try { return localStorage.getItem("doinkNotif") !== "0"; } catch { return true; }
+  });
+  const toggleNotif = () => {
+    setNotif(v => {
+      const next = !v;
+      try { localStorage.setItem("doinkNotif", next ? "1" : "0"); } catch {}
+      return next;
+    });
+  };
+  // Reset-career confirmation modal state.
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  const card = { width:"100%", maxWidth:460, background:"rgba(255,255,255,0.03)", borderRadius:16, padding:"14px 16px", border:"1px solid rgba(255,255,255,0.08)", marginBottom:14 };
+  const sectionLabel = { fontSize:"0.64rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase", marginBottom:10 };
+  const rowBtn = { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 13px", background:"rgba(0,0,0,0.3)", border:"none", cursor:"pointer", width:"100%", textAlign:"left" };
+
+  // Simple gold/grey toggle switch.
+  const Toggle = ({ on, onClick }) => (
+    <button onClick={onClick} role="switch" aria-checked={on} style={{
+      width:46, height:26, borderRadius:14, border:"none", cursor:"pointer", padding:0,
+      background: on ? "#D4A843" : "rgba(255,255,255,0.15)", position:"relative", transition:"background .2s",
+    }}>
+      <span style={{ position:"absolute", top:3, left: on ? 23 : 3, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left .2s" }}/>
+    </button>
+  );
+
+  return (
+    <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)", fontFamily:"'DM Sans',sans-serif" }}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:`calc(env(safe-area-inset-top) + 18px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
+        {/* Sticky header */}
+        <div style={{
+          position:"sticky", top:"env(safe-area-inset-top)", zIndex:20,
+          width:"100%", maxWidth:460, display:"flex", justifyContent:"space-between",
+          alignItems:"center", marginBottom:18, padding:"10px 0",
+          background:"linear-gradient(180deg,#0C1A10 0%,#0C1A10 75%,transparent 100%)",
+        }}>
+          <button onClick={onBack} style={{ ...sBtn, padding:"8px 14px", fontSize:"0.85rem" }}>← Back</button>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", color:"#D4A843", fontWeight:700, letterSpacing:"0.04em" }}>Settings</div>
+          <div style={{ width:60 }} />
+        </div>
+
+        {/* Account */}
+        <div style={card}>
+          <div style={sectionLabel}>Account</div>
+          {isGuest ? (
+            <>
+              <p style={{ fontSize:"0.84rem", color:"rgba(245,237,216,0.65)", lineHeight:1.55, margin:"0 0 10px" }}>
+                You're playing as a guest. Sign in to save your career and compete on the leaderboard.
+              </p>
+              <button onClick={onRequireSignIn} style={{ ...gBtn, width:"100%", fontSize:"0.9rem" }}>Sign In</button>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize:"0.86rem", color:"rgba(245,237,216,0.8)", marginBottom:10 }}>
+                Signed in{career?.playerName ? ` as ${career.playerName}` : ""}.
+              </div>
+              {onSignOut && <button onClick={onSignOut} style={{ ...sBtn, width:"100%", fontSize:"0.88rem" }}>Sign Out</button>}
+            </>
+          )}
+        </div>
+
+        {/* Notifications */}
+        <div style={card}>
+          <div style={sectionLabel}>Notifications</div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ minWidth:0, flex:1 }}>
+              <div style={{ fontSize:"0.9rem", color:"rgba(245,237,216,0.85)", fontWeight:500 }}>In-app notifications</div>
+              <div style={{ fontSize:"0.72rem", color:"rgba(245,237,216,0.45)", marginTop:2 }}>Achievement and level-up alerts.</div>
+            </div>
+            <Toggle on={notif} onClick={toggleNotif}/>
+          </div>
+        </div>
+
+        {/* Sound & Haptics — placeholder for J15 */}
+        <div style={card}>
+          <div style={sectionLabel}>Sound &amp; Haptics</div>
+          <div style={{ fontSize:"0.82rem", color:"rgba(245,237,216,0.45)", lineHeight:1.55 }}>
+            Sound effects and haptic feedback controls are coming soon.
+          </div>
+        </div>
+
+        {/* Help */}
+        <div style={card}>
+          <div style={sectionLabel}>Help</div>
+          <div style={{ borderRadius:10, overflow:"hidden", border:"1px solid rgba(255,255,255,0.06)" }}>
+            <button onClick={() => onOpenLegal("support")} style={rowBtn}>
+              <span style={{ fontSize:"0.88rem", color:"rgba(245,237,216,0.85)", fontWeight:500 }}>Support</span>
+              <span style={{ fontSize:"0.9rem", color:"rgba(212,168,67,0.6)" }}>›</span>
+            </button>
+          </div>
+        </div>
+
+        {/* About DOINK — moved here from Profile */}
+        <div style={card}>
+          <div style={sectionLabel}>About DOINK</div>
+          <p style={{ fontSize:"0.82rem", lineHeight:1.6, color:"rgba(245,237,216,0.7)", margin:0 }}>
+            DOINK is a fictional play-chip card strategy game. No real money is wagered,
+            won, lost, deposited, withdrawn, or redeemed. Chips, scores, levels, unlocks,
+            and leaderboard rankings are fictional and for entertainment only.
+          </p>
+          <p style={{ fontSize:"0.68rem", color:"rgba(245,237,216,0.35)", margin:"10px 0 0" }}>
+            {DEV_NAME} · v1.0
+          </p>
+        </div>
+
+        {/* Legal */}
+        <div style={card}>
+          <div style={sectionLabel}>Legal</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:1, borderRadius:10, overflow:"hidden", border:"1px solid rgba(255,255,255,0.06)" }}>
+            {[
+              { label:"Privacy Policy",   page:"privacy" },
+              { label:"Terms of Use",     page:"terms" },
+              { label:"Account Deletion", page:"accountDeletion" },
+            ].map(row => (
+              <button key={row.label} onClick={() => onOpenLegal(row.page)} style={rowBtn}>
+                <span style={{ fontSize:"0.88rem", color:"rgba(245,237,216,0.85)", fontWeight:500 }}>{row.label}</span>
+                <span style={{ fontSize:"0.9rem", color:"rgba(212,168,67,0.6)" }}>›</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Danger Zone — Reset Career, signed-in only */}
+        {!isGuest && (
+          <div style={{ ...card, border:"1px solid rgba(231,76,60,0.3)" }}>
+            <div style={{ ...sectionLabel, color:"rgba(231,76,60,0.7)" }}>Danger Zone</div>
+            <p style={{ fontSize:"0.8rem", color:"rgba(245,237,216,0.6)", lineHeight:1.55, margin:"0 0 10px" }}>
+              Resetting wipes your level, chip stack, stats, achievements, and unlocks. This cannot be undone.
+            </p>
+            <button onClick={() => setConfirmReset(true)} style={{
+              width:"100%", padding:"12px", borderRadius:12, cursor:"pointer",
+              background:"rgba(231,76,60,0.12)", border:"1px solid rgba(231,76,60,0.4)",
+              color:"rgba(231,140,130,0.95)", fontSize:"0.9rem", fontWeight:700,
+            }}>Reset Career</button>
+          </div>
+        )}
+      </div>
+
+      {/* Strong reset confirmation modal */}
+      {confirmReset && (
+        <div onClick={() => setConfirmReset(false)} style={{ position:"fixed", inset:0, zIndex:80, background:"rgba(0,0,0,0.78)", backdropFilter:"blur(6px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:340, background:"linear-gradient(170deg,#1A0E0C,#0C0807)", border:"1.5px solid rgba(231,76,60,0.45)", borderRadius:18, padding:"22px 20px" }}>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.2rem", color:"#E74C3C", fontWeight:700, textAlign:"center", marginBottom:8 }}>Reset your career?</div>
+            <p style={{ fontSize:"0.85rem", color:"rgba(245,237,216,0.7)", lineHeight:1.6, textAlign:"center", margin:"0 0 18px" }}>
+              This permanently wipes your level, chip stack, stats, achievements, and unlocks.
+              There is no way to undo this.
+            </p>
+            <button onClick={() => { setConfirmReset(false); onResetCareer(); }} style={{
+              width:"100%", padding:"13px", borderRadius:12, cursor:"pointer", marginBottom:8,
+              background:"linear-gradient(160deg,#C0392B,#7A1212)", border:"none",
+              color:"#fff", fontSize:"0.95rem", fontWeight:700,
+            }}>Yes, Reset Everything</button>
+            <button onClick={() => setConfirmReset(false)} style={{ ...sBtn, width:"100%", fontSize:"0.9rem" }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HomeScreen({ onCareer, onQuickPlay, onTutorial, onSettings, hasCareer, isGuest, career, onSignOut, onSignIn, onLeaderboard }) {
+  // Small round icon button used in the top-right header cluster.
+  const IconBtn = ({ onClick, label, icon }) => (
+    <button onClick={onClick} aria-label={label} style={{
+      width:42, height:42, borderRadius:"50%",
+      background:"rgba(255,255,255,0.06)", border:"1px solid rgba(212,168,67,0.3)",
+      display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer",
+    }}>
+      <GameIcon name={icon} size={20} color="#D4A843"/>
+    </button>
+  );
+
+  const lvl = career ? getLevelFromXP(career.xp) : 1;
+
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)" }}>
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:`calc(env(safe-area-inset-top) + 40px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
-        <div style={{ textAlign:"center", marginBottom:52 }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:"clamp(4rem,16vw,6.5rem)", color:"#D4A843", textShadow:"0 0 50px rgba(212,168,67,0.45),0 4px 0 rgba(0,0,0,0.5)", lineHeight:1, letterSpacing:"0.05em" }}>DOINK</div>
-          <div style={{ height:2, background:"linear-gradient(90deg,transparent,#D4A843,transparent)", margin:"16px auto 10px", width:180 }} />
-          <div style={{ fontSize:"0.8rem", color:"rgba(212,168,67,0.55)", letterSpacing:"0.22em", fontWeight:600, textTransform:"uppercase" }}>A Card Game of Pure Chaos</div>
+      {/* Top-right icon header — Tutorial + Settings */}
+      <div style={{
+        position:"absolute", top:"calc(env(safe-area-inset-top) + 12px)", right:16,
+        display:"flex", gap:10, zIndex:5,
+      }}>
+        <IconBtn onClick={onTutorial} label="Tutorial" icon="book"/>
+        <IconBtn onClick={onSettings} label="Settings" icon="dice"/>
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:`calc(env(safe-area-inset-top) + 64px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
+        {/* Wordmark */}
+        <div style={{ textAlign:"center", marginBottom:30 }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:"clamp(3.4rem,14vw,5.4rem)", color:"#D4A843", textShadow:"0 0 50px rgba(212,168,67,0.45),0 4px 0 rgba(0,0,0,0.5)", lineHeight:1, letterSpacing:"0.05em" }}>DOINK</div>
+          <div style={{ height:2, background:"linear-gradient(90deg,transparent,#D4A843,transparent)", margin:"14px auto 8px", width:160 }} />
+          <div style={{ fontSize:"0.74rem", color:"rgba(212,168,67,0.55)", letterSpacing:"0.22em", fontWeight:600, textTransform:"uppercase" }}>A Card Game of Pure Chaos</div>
         </div>
-        <div style={{ width:"100%", maxWidth:340, display:"flex", flexDirection:"column", gap:14 }}>
+
+        {/* Career status panel — signed-in players only */}
+        {!isGuest && career && (
+          <div style={{
+            width:"100%", maxWidth:340, marginBottom:18,
+            background:"linear-gradient(160deg,rgba(40,28,8,0.55),rgba(8,16,10,0.85))",
+            border:"1px solid rgba(212,168,67,0.3)", borderRadius:16, padding:"14px 16px",
+          }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              <span style={{ fontSize:"0.66rem", letterSpacing:"0.16em", color:"rgba(212,168,67,0.6)", fontWeight:700, textTransform:"uppercase" }}>Your Career</span>
+              <span style={{ fontSize:"0.78rem", color:"#F0C96A", fontWeight:700 }}>{rankForLevel(lvl)}</span>
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
+              {[
+                { label:"Level", value:lvl },
+                { label:"Chips", value:`◆${(career.bankroll||0).toLocaleString()}` },
+                { label:"Streak", value:career.currentStreak||0 },
+              ].map(s => (
+                <div key={s.label} style={{ flex:1, textAlign:"center" }}>
+                  <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", color:"#F0C96A", fontWeight:700 }}>{s.value}</div>
+                  <div style={{ fontSize:"0.6rem", letterSpacing:"0.1em", color:"rgba(245,237,216,0.45)", fontWeight:600, textTransform:"uppercase", marginTop:1 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Guest nudge in place of the career panel */}
+        {isGuest && (
+          <div style={{ width:"100%", maxWidth:340, marginBottom:18, textAlign:"center", padding:"12px 14px", background:"rgba(212,168,67,0.06)", border:"1px solid rgba(212,168,67,0.22)", borderRadius:14 }}>
+            <div style={{ fontSize:"0.82rem", color:"rgba(245,237,216,0.7)", lineHeight:1.5 }}>
+              Sign in to start a Career — track your level, chips, and streak.
+            </div>
+          </div>
+        )}
+
+        <div style={{ width:"100%", maxWidth:340, display:"flex", flexDirection:"column", gap:12 }}>
+          {/* Career — the dominant gold CTA */}
           <button onClick={onCareer} style={{
             padding:"20px 24px", borderRadius:18, border:"none",
             background:"linear-gradient(160deg,#8A6418 0%,#D4A843 38%,#F4D27A 62%,#C99536 100%)",
@@ -4338,41 +4683,39 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, isGuest, onS
             boxShadow:"0 8px 28px rgba(212,168,67,0.42), inset 0 1px 0 rgba(255,240,200,0.55), inset 0 -1px 0 rgba(80,40,0,0.35)",
             cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center",
           }}>
-            <span>♠ Career Mode</span>
-            {hasCareer && <span style={{ fontSize:"0.7rem", opacity:0.7, fontWeight:600 }}>Continue</span>}
+            <span>Career Mode</span>
+            {hasCareer && !isGuest && <span style={{ fontSize:"0.7rem", opacity:0.7, fontWeight:600 }}>Continue</span>}
             {isGuest && <span style={{ fontSize:"0.7rem", opacity:0.7, fontWeight:600 }}>Sign in</span>}
           </button>
+
+          {/* Quick Play — secondary */}
           <button onClick={onQuickPlay} style={{
-            padding:"18px 24px", borderRadius:18,
+            padding:"15px 24px", borderRadius:16,
             background:"rgba(255,255,255,0.06)", border:"1.5px solid rgba(212,168,67,0.4)",
-            color:"#F0C96A", fontSize:"1.05rem", fontWeight:600, letterSpacing:"0.04em",
+            color:"#F0C96A", fontSize:"1rem", fontWeight:600, letterSpacing:"0.04em",
             cursor:"pointer", backdropFilter:"blur(8px)",
             display:"flex", justifyContent:"space-between", alignItems:"center",
           }}>
-            <span>♣ Quick Play</span>
+            <span>Quick Play</span>
             <span style={{ fontSize:"0.7rem", opacity:0.55, fontWeight:500 }}>Custom one-off</span>
           </button>
+
+          {/* Leaderboard — secondary */}
           {onLeaderboard && (
             <button onClick={onLeaderboard} style={{
-              padding:"16px 24px", borderRadius:16,
+              padding:"15px 24px", borderRadius:16,
               background:"rgba(255,255,255,0.05)", border:"1px solid rgba(212,168,67,0.3)",
               color:"#F0C96A", fontSize:"0.98rem", fontWeight:600, cursor:"pointer",
               display:"flex", justifyContent:"space-between", alignItems:"center",
             }}>
-              <span>🏆 Leaderboard</span>
+              <span>Leaderboard</span>
               <span style={{ fontSize:"0.7rem", opacity:0.55, fontWeight:500 }}>See the standings</span>
             </button>
           )}
-          <button onClick={onTutorial} style={{
-            padding:"14px 22px", borderRadius:14,
-            background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.12)",
-            color:"rgba(245,237,216,0.7)", fontSize:"0.9rem", fontWeight:500, cursor:"pointer",
-          }}>
-            📖 Tutorial
-          </button>
+
           {isGuest && onSignIn && (
             <button onClick={onSignIn} style={{
-              padding:"12px 22px", borderRadius:12, marginTop:4,
+              padding:"12px 22px", borderRadius:12, marginTop:2,
               background:"rgba(212,168,67,0.1)", border:"1px solid rgba(212,168,67,0.35)",
               color:"#F0C96A", fontSize:"0.9rem", fontWeight:600, cursor:"pointer",
             }}>
@@ -4381,15 +4724,16 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, isGuest, onS
           )}
           {!isGuest && onSignOut && (
             <button onClick={onSignOut} style={{
-              padding:"10px 22px", borderRadius:12, marginTop:4,
+              padding:"8px 22px", borderRadius:12,
               background:"transparent", border:"none",
-              color:"rgba(245,237,216,0.4)", fontSize:"0.82rem", fontWeight:500, cursor:"pointer",
+              color:"rgba(245,237,216,0.4)", fontSize:"0.8rem", fontWeight:500, cursor:"pointer",
             }}>
               Sign Out
             </button>
           )}
+
           {/* App-store readiness: fictional-chips disclaimer in the footer. */}
-          <p style={{ fontSize:"0.68rem", color:"rgba(245,237,216,0.32)", textAlign:"center", lineHeight:1.6, marginTop:14, padding:"0 8px" }}>
+          <p style={{ fontSize:"0.68rem", color:"rgba(245,237,216,0.32)", textAlign:"center", lineHeight:1.6, marginTop:10, padding:"0 8px" }}>
             DOINK uses fictional play chips only. No real money, prizes,
             cash-out, or redeemable value.
           </p>
@@ -4402,86 +4746,103 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, hasCareer, isGuest, onS
 // ─────────────────────────────────────────────────────────
 // CAREER HOME — bankroll, level, daily stake, stats, play
 // ─────────────────────────────────────────────────────────
-function CareerHome({ career, onPlay, onClaimDaily, onResetCareer, onBack, onLeaderboard, onProfile }) {
+function CareerHome({ career, onPlay, onClaimDaily, onBack, onLeaderboard, onSettings, onProfile }) {
   const lvlInfo = xpToNextLevel(career.xp);
+  const lvl = getLevelFromXP(career.xp);
   const dailyEligible = canClaimDaily(career);
   const dailyAmount = dailyAmountFor(career);
-  const card = { background:"rgba(255,255,255,0.03)", borderRadius:16, padding:"16px 18px", border:"1px solid rgba(255,255,255,0.08)" };
+  const card = { width:"100%", maxWidth:420, background:"rgba(255,255,255,0.03)", borderRadius:16, padding:"16px 18px", border:"1px solid rgba(255,255,255,0.08)", marginBottom:14 };
+
+  // Next unlock — the next career table the player hasn't reached yet.
+  const nextTable = CAREER_TABLES.find(t => t.unlockLevel > lvl);
+
+  // Compressed stats — the four the spec asks for.
+  const sessions = career.sessionsPlayed || 0;
+  const winRate = sessions > 0 ? Math.round((career.sessionsWon / sessions) * 100) : 0;
+
+  // Small round icon button for the header.
+  const IconBtn = ({ onClick, label, icon }) => (
+    <button onClick={onClick} aria-label={label} style={{
+      width:38, height:38, borderRadius:"50%",
+      background:"rgba(255,255,255,0.06)", border:"1px solid rgba(212,168,67,0.3)",
+      display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer",
+    }}>
+      <GameIcon name={icon} size={18} color="#D4A843"/>
+    </button>
+  );
+
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)" }}>
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:`calc(env(safe-area-inset-top) + 18px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
-        <div style={{ width:"100%", maxWidth:420, display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:`calc(env(safe-area-inset-top) + 14px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
+
+        {/* Header — Back left, Career center, Leaderboard + Settings right */}
+        <div style={{ width:"100%", maxWidth:420, display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
           <button onClick={onBack} style={{ ...sBtn, padding:"8px 14px", fontSize:"0.85rem" }}>← Back</button>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", color:"#D4A843", fontWeight:700, letterSpacing:"0.04em" }}>Career</div>
-          <button onClick={onResetCareer} style={{ ...sBtn, padding:"8px 14px", fontSize:"0.75rem", opacity:0.7 }}>Reset</button>
+          <div style={{ display:"flex", gap:8 }}>
+            {onLeaderboard && <IconBtn onClick={onLeaderboard} label="Leaderboard" icon="trophy"/>}
+            {onSettings && <IconBtn onClick={onSettings} label="Settings" icon="dice"/>}
+          </div>
         </div>
 
-        {/* Bankroll hero card */}
+        {/* Career Snapshot — chips, level/rank, XP, next unlock */}
         <div style={{
           width:"100%", maxWidth:420,
           background:"linear-gradient(160deg,rgba(60,42,12,0.6),rgba(20,12,4,0.85))",
-          border:"1.5px solid rgba(212,168,67,0.5)",
-          borderRadius:22, padding:"22px 24px",
-          textAlign:"center",
-          boxShadow:"0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(240,201,106,0.35), 0 0 30px rgba(212,168,67,0.18)",
-          marginBottom:16,
+          border:"1.5px solid rgba(212,168,67,0.5)", borderRadius:22, padding:"20px 22px",
+          boxShadow:"0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(240,201,106,0.35)",
+          marginBottom:14,
         }}>
-          <div style={{ fontSize:"0.62rem", letterSpacing:"0.24em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>Chip Stack</div>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"3rem", color:"#F0C96A", fontWeight:900, lineHeight:1, textShadow:"0 0 32px rgba(212,168,67,0.6)" }}>◆{career.bankroll.toLocaleString()}</div>
-          <div style={{ marginTop:14, display:"flex", justifyContent:"center", gap:14, fontSize:"0.78rem", color:"rgba(245,237,216,0.6)" }}>
-            <span><span style={{ color:"#D4A843", fontWeight:700 }}>Lvl {career.level}</span></span>
-            <span style={{ color:"rgba(255,255,255,0.2)" }}>·</span>
-            <span>{career.sessionsPlayed} session{career.sessionsPlayed===1?"":"s"}</span>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+            <div>
+              <div style={{ fontSize:"0.62rem", letterSpacing:"0.22em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase" }}>Chip Stack</div>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2.6rem", color:"#F0C96A", fontWeight:900, lineHeight:1.05, textShadow:"0 0 32px rgba(212,168,67,0.55)" }}>◆{career.bankroll.toLocaleString()}</div>
+            </div>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:"0.62rem", letterSpacing:"0.16em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase" }}>Rank</div>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", color:"#F0C96A", fontWeight:700 }}>{rankForLevel(lvl)}</div>
+              <div style={{ fontSize:"0.74rem", color:"rgba(245,237,216,0.55)", marginTop:1 }}>Level {lvl}</div>
+            </div>
           </div>
           {/* XP bar */}
           <div style={{ marginTop:12 }}>
             <div style={{ height:8, background:"rgba(0,0,0,0.5)", borderRadius:6, overflow:"hidden", border:"1px solid rgba(212,168,67,0.18)" }}>
-              <div style={{ height:"100%", width:`${Math.min(100, (lvlInfo.current/lvlInfo.needed)*100)}%`, background:"linear-gradient(90deg, #8A6418, #F4D27A)" }}/>
+              <div style={{ height:"100%", width:`${Math.min(100,(lvlInfo.current/lvlInfo.needed)*100)}%`, background:"linear-gradient(90deg,#8A6418,#F4D27A)" }}/>
             </div>
-            <div style={{ marginTop:4, fontSize:"0.66rem", color:"rgba(245,237,216,0.45)", fontWeight:500 }}>{lvlInfo.current} / {lvlInfo.needed} XP to Lvl {career.level + 1}</div>
+            <div style={{ marginTop:4, fontSize:"0.66rem", color:"rgba(245,237,216,0.45)", fontWeight:500 }}>{lvlInfo.current} / {lvlInfo.needed} XP to Level {lvl + 1}</div>
+          </div>
+          {/* Next unlock */}
+          <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(212,168,67,0.16)", fontSize:"0.76rem", color:"rgba(245,237,216,0.6)" }}>
+            {nextTable
+              ? <>Next unlock: <span style={{ color:"#F0C96A", fontWeight:700 }}>{nextTable.name}</span> at Level {nextTable.unlockLevel}</>
+              : <>You've unlocked every table. You're at the top.</>}
           </div>
         </div>
 
-        {/* Daily Stake */}
+        {/* Today's Action — the daily stake */}
         <div style={{
-          width:"100%", maxWidth:420,
           ...card,
-          marginBottom:14,
           background: dailyEligible ? "linear-gradient(160deg,rgba(14,58,30,0.45),rgba(8,18,12,0.6))" : "rgba(255,255,255,0.03)",
           border: dailyEligible ? "1.5px solid rgba(39,174,96,0.5)" : "1px solid rgba(255,255,255,0.08)",
         }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:14 }}>
             <div style={{ minWidth:0 }}>
-              <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color: dailyEligible?"rgba(39,174,96,0.85)":"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase" }}>Daily Stake</div>
+              <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color: dailyEligible?"rgba(39,174,96,0.85)":"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase" }}>Today's Action</div>
               <div style={{ fontSize:"0.85rem", color:"rgba(245,237,216,0.7)", marginTop:4, lineHeight:1.45 }}>
                 {dailyEligible
-                  ? `You can claim ◆${dailyAmount} to top up to ◆${career.dailyCap}.`
+                  ? `Claim ◆${dailyAmount} to top up your stack to ◆${career.dailyCap}.`
                   : career.bankroll >= career.dailyCap
-                    ? `Your chip stack is above ◆${career.dailyCap}. Come back if you run low.`
+                    ? `Your stack is above ◆${career.dailyCap}. Come back if you run low.`
                     : `Already claimed today. Resets tomorrow.`}
               </div>
             </div>
             {dailyEligible && (
-              <button onClick={onClaimDaily} style={{ ...gBtn, padding:"12px 18px", fontSize:"0.85rem", flexShrink:0, background:"linear-gradient(160deg,#0E4A1E 0%,#27AE60 60%,#1A8A3A 100%)", color:"#FFF", boxShadow:"0 6px 22px rgba(39,174,96,0.42), inset 0 1px 0 rgba(180,255,200,0.4)" }}>Claim +${dailyAmount}</button>
+              <button onClick={onClaimDaily} style={{ ...gBtn, padding:"12px 18px", fontSize:"0.85rem", flexShrink:0, background:"linear-gradient(160deg,#0E4A1E 0%,#27AE60 60%,#1A8A3A 100%)", color:"#FFF", boxShadow:"0 6px 22px rgba(39,174,96,0.42)" }}>Claim ◆{dailyAmount}</button>
             )}
           </div>
         </div>
 
-        {/* Stats card */}
-        <div style={{ ...card, width:"100%", maxWidth:420, marginBottom:14 }}>
-          <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase", marginBottom:10 }}>Career Stats</div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-            <StatCell label="Sessions" value={career.sessionsPlayed}/>
-            <StatCell label="Sessions Won" value={career.sessionsWon}/>
-            <StatCell label="Total Profit" value={`${career.totalCareerProfit>=0?"+":"−"}◆${Math.abs(career.totalCareerProfit).toLocaleString()}`} color={career.totalCareerProfit>=0?"#27AE60":"#E74C3C"}/>
-            <StatCell label="Best Streak" value={career.bestStreak}/>
-            <StatCell label="Doink Bets Hit" value={career.doinkBetsHit}/>
-            <StatCell label="Mythicals" value={career.mythicalHits}/>
-            <StatCell label="Biggest Win" value={`◆${career.biggestPotWon.toLocaleString()}`}/>
-            <StatCell label="Worst Doink" value={`◆${career.biggestDoinkLoss.toLocaleString()}`} color="#E74C3C"/>
-          </div>
-        </div>
-
+        {/* Play a Table — primary CTA */}
         <button onClick={onPlay} style={{
           width:"100%", maxWidth:420,
           padding:"18px 24px", borderRadius:18, border:"none",
@@ -4489,23 +4850,28 @@ function CareerHome({ career, onPlay, onClaimDaily, onResetCareer, onBack, onLea
           color:"#1A0E00", fontFamily:"'DM Sans',sans-serif", fontSize:"1.1rem", fontWeight:700,
           letterSpacing:"0.06em", textTransform:"uppercase",
           boxShadow:"0 8px 28px rgba(212,168,67,0.42), inset 0 1px 0 rgba(255,240,200,0.55)",
-          cursor:"pointer", marginTop:4,
+          cursor:"pointer", marginBottom:14,
         }}>Play a Table →</button>
-        {onLeaderboard && (
-          <button onClick={onLeaderboard} style={{
-            width:"100%", maxWidth:420, marginTop:10,
-            padding:"14px 24px", borderRadius:14,
-            background:"rgba(255,255,255,0.05)", border:"1px solid rgba(212,168,67,0.3)",
-            color:"#F0C96A", fontSize:"0.95rem", fontWeight:600, cursor:"pointer",
-          }}>🏆 Leaderboard</button>
-        )}
+
+        {/* Compressed stats — Win Rate, Sessions, Total Profit, Best Streak */}
+        <div style={card}>
+          <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase", marginBottom:10 }}>Career Stats</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <StatCell label="Win Rate" value={`${winRate}%`}/>
+            <StatCell label="Sessions" value={sessions}/>
+            <StatCell label="Total Profit" value={`${career.totalCareerProfit>=0?"+":"−"}◆${Math.abs(career.totalCareerProfit).toLocaleString()}`} color={career.totalCareerProfit>=0?"#27AE60":"#E74C3C"}/>
+            <StatCell label="Best Streak" value={career.bestStreak}/>
+          </div>
+        </div>
+
+        {/* Profile & Stats — secondary */}
         {onProfile && (
           <button onClick={onProfile} style={{
-            width:"100%", maxWidth:420, marginTop:10,
+            width:"100%", maxWidth:420,
             padding:"14px 24px", borderRadius:14,
             background:"rgba(255,255,255,0.05)", border:"1px solid rgba(212,168,67,0.3)",
             color:"#F0C96A", fontSize:"0.95rem", fontWeight:600, cursor:"pointer",
-          }}>👤 Profile & Stats</button>
+          }}>Profile &amp; Full Stats</button>
         )}
       </div>
     </div>
@@ -4572,7 +4938,7 @@ function CareerTableSelect({ career, onSelect, onBack }) {
                 </div>
                 {playable
                   ? <button onClick={() => onSelect(t)} style={{ ...gBtn, width:"100%", padding:"12px", fontSize:"0.95rem" }}>{`Start — Buy in ◆${t.buyIn}`}</button>
-                  : <div style={{ padding:"10px 14px", background:"rgba(0,0,0,0.3)", borderRadius:10, color: unlocked?"rgba(245,237,216,0.6)":"rgba(231,76,60,0.75)", fontSize:"0.78rem", fontWeight:600, textAlign:"center" }}>{unlocked ? "💰 " : "🔒 "}{reason}</div>
+                  : <div style={{ padding:"10px 14px", background:"rgba(0,0,0,0.3)", borderRadius:10, color: unlocked?"rgba(245,237,216,0.6)":"rgba(231,76,60,0.75)", fontSize:"0.78rem", fontWeight:600, textAlign:"center" }}>{unlocked ? " " : " "}{reason}</div>
                 }
               </div>
             );
@@ -4775,36 +5141,6 @@ function ProfileScreen({ career, onRename, onBack, onOpenLegal, onOpenAchievemen
           </div>
           <span style={{ fontSize:"1.3rem", color:"rgba(212,168,67,0.6)" }}>›</span>
         </button>
-
-        {/* About & Legal */}
-        <div style={{ ...card, width:"100%", maxWidth:440, marginTop:14 }}>
-          <div style={{ fontSize:"0.66rem", letterSpacing:"0.2em", color:"rgba(212,168,67,0.55)", fontWeight:700, textTransform:"uppercase", marginBottom:10 }}>About DOINK</div>
-          <p style={{ fontSize:"0.82rem", lineHeight:1.6, color:"rgba(245,237,216,0.7)", margin:"0 0 12px" }}>
-            DOINK is a fictional play-chip card strategy game. No real money is wagered,
-            won, lost, deposited, withdrawn, or redeemed. Chips, scores, levels, unlocks,
-            and leaderboard rankings are fictional and for entertainment only.
-          </p>
-          <div style={{ display:"flex", flexDirection:"column", gap:1, borderRadius:10, overflow:"hidden", border:"1px solid rgba(255,255,255,0.06)" }}>
-            {[
-              { label:"Privacy Policy",   page:"privacy" },
-              { label:"Terms of Use",     page:"terms" },
-              { label:"Account Deletion", page:"accountDeletion" },
-              { label:"Support",          page:"support" },
-            ].map(row => (
-              <button key={row.label} onClick={() => onOpenLegal && onOpenLegal(row.page)} style={{
-                display:"flex", justifyContent:"space-between", alignItems:"center",
-                padding:"12px 13px", background:"rgba(0,0,0,0.3)", border:"none",
-                cursor:"pointer", width:"100%", textAlign:"left",
-              }}>
-                <span style={{ fontSize:"0.88rem", color:"rgba(245,237,216,0.85)", fontWeight:500 }}>{row.label}</span>
-                <span style={{ fontSize:"0.9rem", color:"rgba(212,168,67,0.6)" }}>›</span>
-              </button>
-            ))}
-          </div>
-          <p style={{ fontSize:"0.68rem", color:"rgba(245,237,216,0.35)", margin:"10px 0 0", lineHeight:1.5 }}>
-            {DEV_NAME} · v1.0
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -4826,9 +5162,17 @@ export { createDefaultCareer, normalizeCareer, CAREER_KEY };
 //     onSignOut      — sign the user out
 //     onShowLeaderboard — open the leaderboard screen
 //     displayName    — the signed-in user's display name
-export function GameRoot({ career, setCareer, isGuest, onSignOut, onRequireSignIn, onShowLeaderboard, onTutorialTrigger, displayName }) {
+export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, onRequireSignIn, onShowLeaderboard, onTutorialTrigger, displayName }) {
   // Route state: "home" | "tutorial" | "quickSetup" | "careerHome" | "careerTables" | "quickGame" | "careerGame" | "careerSummary"
-  const [route, setRoute] = useState("home");
+  // Start at initialRoute so returning from the leaderboard (which remounts
+  // GameRoot) lands the player back where they were — Home or Career.
+  const [route, setRoute] = useState(initialRoute || "home");
+  // Records which screen opened a legal/support page, so Back returns there.
+  const [legalReturn, setLegalReturn] = useState("profile");
+  const openLegal = (page, from) => { setLegalReturn(from); setRoute(page); };
+  // Records which screen opened Settings so Back returns there (Home or Career).
+  const [settingsReturn, setSettingsReturn] = useState("home");
+  const openSettings = (from) => { setSettingsReturn(from); setRoute("settings"); };
   const [cfg, setCfg] = useState(null);                    // Game cfg for either mode
   const [pendingSummary, setPendingSummary] = useState(null); // { result, oldBankroll, newBankroll }
   // Queue of achievements unlocked but not yet shown as a toast.
@@ -4980,9 +5324,9 @@ export function GameRoot({ career, setCareer, isGuest, onSignOut, onRequireSignI
         career={career}
         onPlay={() => setRoute("careerTables")}
         onClaimDaily={handleClaimDaily}
-        onResetCareer={handleResetCareer}
         onBack={() => setRoute("home")}
-        onLeaderboard={onShowLeaderboard}
+        onLeaderboard={() => onShowLeaderboard("careerHome")}
+        onSettings={() => openSettings("careerHome")}
         onProfile={() => setRoute("profile")}
       />
       {pendingUnlock && (
@@ -4996,17 +5340,29 @@ export function GameRoot({ career, setCareer, isGuest, onSignOut, onRequireSignI
       career={career}
       onRename={(newName) => setCareer(c => ({ ...c, playerName: newName }))}
       onBack={() => setRoute("careerHome")}
-      onOpenLegal={(page) => setRoute(page)}
+      onOpenLegal={(page) => openLegal(page, "profile")}
       onOpenAchievements={() => setRoute("achievements")}
     />
   );
 
-  // Legal / about screens — reachable from the Profile screen.
-  if (route === "privacy")          return <PrivacyPolicy   onBack={() => setRoute("profile")} />;
-  if (route === "terms")            return <TermsOfUse      onBack={() => setRoute("profile")} />;
-  if (route === "accountDeletion")  return <AccountDeletion onBack={() => setRoute("profile")} />;
-  if (route === "support")          return <SupportPage     onBack={() => setRoute("profile")} />;
+  // Legal / about screens — `legalReturn` records which screen opened them
+  // so Back goes to the right place (Profile or Settings).
+  if (route === "privacy")          return <PrivacyPolicy   onBack={() => setRoute(legalReturn)} />;
+  if (route === "terms")            return <TermsOfUse      onBack={() => setRoute(legalReturn)} />;
+  if (route === "accountDeletion")  return <AccountDeletion onBack={() => setRoute(legalReturn)} />;
+  if (route === "support")          return <SupportPage     onBack={() => setRoute(legalReturn)} />;
   if (route === "achievements" && career) return <AchievementsScreen career={career} onBack={() => setRoute("profile")} />;
+  if (route === "settings") return (
+    <SettingsScreen
+      career={career}
+      isGuest={isGuest}
+      onBack={() => setRoute(settingsReturn)}
+      onResetCareer={handleResetCareer}
+      onOpenLegal={(page) => openLegal(page, "settings")}
+      onSignOut={onSignOut}
+      onRequireSignIn={onRequireSignIn}
+    />
+  );
 
   if (route === "careerTables" && career) return (
     <CareerTableSelect
@@ -5040,12 +5396,14 @@ export function GameRoot({ career, setCareer, isGuest, onSignOut, onRequireSignI
     <HomeScreen
       hasCareer={!!career}
       isGuest={isGuest}
+      career={career}
       onCareer={enterCareer}
       onQuickPlay={() => { onTutorialTrigger?.(); setRoute("quickSetup"); }}
       onTutorial={() => setRoute("tutorial")}
+      onSettings={() => openSettings("home")}
       onSignOut={onSignOut}
       onSignIn={onRequireSignIn}
-      onLeaderboard={onShowLeaderboard}
+      onLeaderboard={() => onShowLeaderboard("home")}
     />
   );
   })();

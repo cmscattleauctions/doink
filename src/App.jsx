@@ -55,6 +55,8 @@ export default function App() {
   );
   // Whether the first-time tutorial is currently being shown.
   const [showTutorial, setShowTutorial] = useState(false);
+  // Which GameRoot screen to return to after a leaderboard visit.
+  const [gameReturnRoute, setGameReturnRoute] = useState("home");
   const saveTimer = useRef(null);
 
   // Trigger the first-time tutorial if it hasn't been seen yet. Called on a
@@ -198,9 +200,10 @@ export default function App() {
       career={career}
       setCareer={setCareer}
       isGuest={!user}
+      initialRoute={gameReturnRoute}
       onSignOut={user ? handleSignOut : undefined}
       onRequireSignIn={() => setRoute("signin")}
-      onShowLeaderboard={() => setRoute("leaderboard")}
+      onShowLeaderboard={(fromRoute) => { setGameReturnRoute(fromRoute || "home"); setRoute("leaderboard"); }}
       onTutorialTrigger={maybeShowTutorial}
       displayName={career?.playerName || (user && user.displayName) || "Guest"}
     />

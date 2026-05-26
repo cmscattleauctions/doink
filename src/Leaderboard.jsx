@@ -43,7 +43,7 @@ export default function Leaderboard({ onBack, myUid }) {
           background: "linear-gradient(180deg, #0C1A10 0%, #0C1A10 75%, transparent 100%)",
         }}>
           <button onClick={onBack} style={backBtn}>← Back</button>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.4rem", color: "#D4A843", fontWeight: 700, letterSpacing: "0.04em" }}>🏆 Leaderboard</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.4rem", color: "#D4A843", fontWeight: 700, letterSpacing: "0.04em" }}>Leaderboard</div>
           <div style={{ width: 60 }} />
         </div>
 
@@ -75,7 +75,7 @@ export default function Leaderboard({ onBack, myUid }) {
           )}
           {sorted.map((row, i) => {
             const isMe = row.uid === myUid;
-            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+            const medalColor = i === 0 ? "#F0C96A" : i === 1 ? "#C8CDD2" : i === 2 ? "#C97F4A" : null;
             return (
               <div key={row.uid || i} style={{
                 ...card,
@@ -86,9 +86,9 @@ export default function Leaderboard({ onBack, myUid }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                   <div style={{
                     width: 30, textAlign: "center", fontFamily: "'Playfair Display', serif",
-                    fontWeight: 800, fontSize: medal ? "1.1rem" : "0.95rem",
-                    color: medal ? "#F0C96A" : "rgba(245,237,216,0.45)",
-                  }}>{medal || (i + 1)}</div>
+                    fontWeight: 800, fontSize: medalColor ? "1.1rem" : "0.95rem",
+                    color: medalColor || "rgba(245,237,216,0.45)",
+                  }}>{i + 1}</div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: "0.95rem", color: "#F5EDD8", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {row.name || "Player"}{isMe && <span style={{ color: "#D4A843", fontWeight: 500 }}> · you</span>}
