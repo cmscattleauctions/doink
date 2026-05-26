@@ -1783,13 +1783,13 @@ function SlideSheet({ title, onClose, children }) {
 function TableDrawers({ openDrawer, setOpenDrawer, log, marketContent }) {
   return (
     <>
-      {/* Lower rail: LOG (left) and MARKET (right) — buttons only by default */}
-      <div style={{ flexShrink:0, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 14px 8px", zIndex:30 }}>
+      {/* Lower rail: LOG only. The MARKET button is hidden (J10) — hand
+          trading is temporarily disabled. The market drawer code below is
+          left dormant (openDrawer can no longer become "market") so the
+          feature can be restored later without a rebuild. */}
+      <div style={{ flexShrink:0, display:"flex", justifyContent:"center", alignItems:"center", padding:"6px 14px 8px", zIndex:30 }}>
         <button onClick={() => setOpenDrawer("log")} style={drawerTabStyle}>
           <span style={{ fontSize:"0.62rem", letterSpacing:"0.12em" }}>▤ LOG</span>
-        </button>
-        <button onClick={() => setOpenDrawer("market")} style={drawerTabStyle}>
-          <span style={{ fontSize:"0.62rem", letterSpacing:"0.12em" }}>MARKET ▦</span>
         </button>
       </div>
 
@@ -2575,7 +2575,20 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   const buildQueue = (ps, fi) => {
     const n = ps.length;
     const order = Array.from({ length: n }, (_, i) => (fi + i) % n);
-    return order.map(i => ({ slotId: `own-${ps[i].id}`, playerId: ps[i].id, cards: ps[i].cards, isBought: false, sellerId: null }));
+    // A player who placed a blind bet pre-deal has already committed their
+    // bet. Their slot is flagged `blindCommitted` so the betting phase
+    // resolves the blind bet automatically WITHOUT prompting them for a
+    // second, regular bet. (Not `skipped` — a skipped slot never resolves,
+    // which would mean the blind bet never pays out.)
+    return order.map(i => ({
+      slotId: `own-${ps[i].id}`,
+      playerId: ps[i].id,
+      cards: ps[i].cards,
+      isBought: false,
+      sellerId: null,
+      blindCommitted: ps[i].betType === "blind",
+      blindAmount: ps[i].betType === "blind" ? (ps[i].bet || 0) : 0,
+    }));
   };
 
   const flashPot = d => {
@@ -2682,12 +2695,16 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
       queueRef.current = q;
       queueIdxRef.current = 0;
       setQueueIdx(0);
-      addLog("Cards dealt — buy hands or wait for bidding.");
-      setPhase("preBuy");
+      addLog("Cards dealt — bidding begins.");
+      // Hand trading is hidden (J10): skip the preBuy phase entirely and go
+      // straight to betting. The preBuy phase and its bot-sell-offer logic
+      // remain in the code, just unreachable, so trading can be restored.
+      setPhase("betting");
     }, t + 200);
   };
 
-  // ── PREBUY: human gets to buy hands; bots may post sell offers. No auto-advance — user explicitly clicks "Skip to Bidding".
+  // ── PREBUY (dormant — J10 hand trading hidden): when active, the human
+  // could buy hands and bots posted sell offers. Phase is currently skipped.
   useEffect(() => {
     if (phase !== "preBuy") return;
     tryBotPostSellOffers();
@@ -2721,6 +2738,16 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
     const p = playersRef.current.find(x => x.id === slot.playerId);
     if (!p) return;
+
+    // Blind-committed slot: the player (bot or human) placed a blind bet
+    // pre-deal. Resolve it automatically — do NOT prompt for a regular bet.
+    // execBet's blind path knows the chips/bet were already committed.
+    if (slot.blindCommitted) {
+      const t = setTimeout(() => {
+        execBet(slot, p, slot.blindAmount || p.bet || 0, "blind");
+      }, p.isBot ? 1200 : 700);
+      return () => clearTimeout(t);
+    }
 
     if (p.isBot) {
       // Bot turn pacing (deliberately slow so player can follow every step):
@@ -2820,11 +2847,24 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     // hitProb hits +EV around spread 4+; bots should play moderate-to-strong hands.
     const spreadEV = hitProb - doinkProb;
 
+    // ── Pot-size risk policy (J13) ──
+    //   Small pot  → low risk to chase, so bots lean INTO it (handled below
+    //                via the existing smallPot all-in rounding).
+    //   Big pot    → only commit big with a genuinely strong hand. With a
+    //                weak/mediocre hand, sit out or bet small — don't dump a
+    //                large bet into a big pot on a so-so hand.
+    const bigPot     = potNow > replenishAmt * 3;
+    const strongHand = spreadEV > 0.30;          // wide spread, comfortably +EV
+    const bigPotWeak = bigPot && !strongHand;    // the case to be cautious in
+
     // Aggressive on strong hands. A-J = spread 10 → hitProb = 36/50 = 72%,
     // doinkProb = 12%. EV per ◆1 ≈ +0.60. Bot should bet.
     if (spreadEV > 0.05) {
-      // Always bet positive EV (modulo a tiny variance pass)
-      const passChance = Math.max(0.04, 0.18 - spreadEV * 0.4) * (1 / Math.max(0.6, pz.risk));
+      // Always bet positive EV (modulo a tiny variance pass). In a big pot
+      // with a non-strong hand, the pass chance is raised sharply — the bot
+      // would rather sit out than risk a large pot on a mediocre hand.
+      let passChance = Math.max(0.04, 0.18 - spreadEV * 0.4) * (1 / Math.max(0.6, pz.risk));
+      if (bigPotWeak) passChance = Math.min(0.85, 0.45 + (0.30 - spreadEV));
       if (Math.random() < passChance) {
         execPass(slot, p);
         return;
@@ -2834,6 +2874,9 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         let frac = 0.3 + Math.min(0.55, spreadEV * 0.85);
         frac *= Math.min(1.1, pz.confidence);
         frac = Math.min(0.9, frac);
+        // Big pot + weak hand: if the bot does still bet, keep it small —
+        // a modest probe, not a major commitment.
+        if (bigPotWeak) frac = Math.min(frac, 0.15);
         let amt = Math.max(1, Math.min(capSpread, Math.floor(capSpread * frac)));
 
         // ── Full-pot tuning ──
@@ -2865,9 +2908,11 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
       return;
     }
 
-    // Marginal-EV spread sometimes worth a small bet for the chaotic ones
+    // Marginal-EV spread sometimes worth a small bet for the chaotic ones —
+    // but in a big pot this stays a tiny probe, never a real commitment.
     if (spreadEV > -0.05 && capSpread >= 1 && Math.random() < 0.25 * pz.risk) {
-      const amt = Math.max(1, Math.floor(capSpread * 0.2));
+      const probeFrac = bigPot ? 0.08 : 0.2;
+      const amt = Math.max(1, Math.floor(capSpread * probeFrac));
       execBet(slot, p, amt, "spread");
       return;
     }
@@ -2897,14 +2942,19 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     setLocked(true);
     const [a, b] = slot.cards;
 
-    // Stable target for after resolution (used in calculations below)
-    const chipsAfterBet = p.chips - amount;
+    // A blind bet was committed pre-deal: the chips were already deducted and
+    // p.bet was already set when the blind bet was placed. For blind, we must
+    // NOT deduct again or double the bet — chipsAfterBet is simply p.chips.
+    const isBlind = type === "blind";
+    const chipsAfterBet = isBlind ? p.chips : p.chips - amount;
 
     // IMPORTANT: do NOT decrement seat chips yet. The bet amount is shown
     // prominently in the bet marker; we hold the seat chips at the pre-bet
     // value until the resolution so the user doesn't see chips changing before
-    // they see the hit card.
-    setPlayers(prev => prev.map(pl => pl.id === p.id ? { ...pl, bet: (pl.bet || 0) + amount, betType: type } : pl));
+    // they see the hit card. (Blind: bet already set, so don't add it again.)
+    if (!isBlind) {
+      setPlayers(prev => prev.map(pl => pl.id === p.id ? { ...pl, bet: (pl.bet || 0) + amount, betType: type } : pl));
+    }
     addLog(`${p.name} bets ◆${amount} [${type}]${slot.isBought ? " (bought hand)" : ""}.`);
 
     // Visual: fly chips from the bettor's seat to the pot (center of table).
@@ -2992,7 +3042,30 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
             addLog(`${p.name} mythical missed.`);
             showComment(p.name, getComment("miss"));
           }
+        } else if (type === "blind") {
+          // Blind bet: committed before cards were dealt. Wins if the hit
+          // falls between the two cards — pays 2:1. A doink still doinks.
+          if (between(a, b, hitCard)) {
+            const winnings = amount * 2;
+            chipDelta = amount + winnings;
+            pd = -winnings;
+            outcome = "win";
+            addLog(`${p.name} BLIND BET HITS! +◆${winnings}`, "win");
+            showComment(p.name, getComment("win"));
+          } else if (isDoinkCard(a, b, hitCard)) {
+            const cov = p.insurance?.coverage || 0;
+            chipDelta = -(amount - cov);
+            pd = amount * 2 - cov;
+            outcome = "doink";
+            addLog(` ${p.name} DOINKS! -◆${amount * 2}`, "doink");
+            showComment(p.name, getComment("doink"));
+          } else {
+            pd = amount;
+            addLog(`${p.name} blind bet missed.`);
+            showComment(p.name, getComment("miss"));
+          }
         } else {
+          // Spread bet — hit falls between the two cards, pays 1:1.
           if (between(a, b, hitCard)) {
             const winnings = amount;
             chipDelta = amount + winnings;
@@ -3436,7 +3509,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     const coverage = Math.floor(maxBet * 0.4);
     if (!curPlayer || curPlayer.chips < premium) return;
     setPlayers(prev => prev.map(p => p.id === curPlayer.id ? { ...p, chips: p.chips - premium, insurance: { premium, coverage } } : p));
-    addLog(`🛡️ ${curPlayer.name} insures for ◆${premium} (covers ◆${coverage}).`);
+    addLog(`${curPlayer.name} insures for ◆${premium} (covers ◆${coverage}).`);
     setSheet(null);
   };
 
@@ -3901,7 +3974,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
               <>
                 <button onClick={() => { setOpenDrawer(null); setTradeMode("buy"); setSheet("trade"); }} style={{ ...gBtn, width:"100%", fontSize:"0.9rem" }}> Buy a Hand</button>
                 {!pendingSellOffer && (
-                  <button onClick={() => { setOpenDrawer(null); setTradeMode("sell"); setSheet("trade"); }} style={{ ...sBtn, width:"100%", fontSize:"0.9rem" }}>🏷️ Sell My Hand</button>
+                  <button onClick={() => { setOpenDrawer(null); setTradeMode("sell"); setSheet("trade"); }} style={{ ...sBtn, width:"100%", fontSize:"0.9rem" }}> Sell My Hand</button>
                 )}
               </>
             )}
@@ -4054,7 +4127,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
           </div>
           {showSecondary && (
             <div className="fade-up" style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap", marginTop:4 }}>
-              {!curSlot?.isBought&&<button onClick={()=>{setShowSecondary(false);setSheet("insurance");}} disabled={cantBet} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px", opacity:cantBet?0.4:1 }}>🛡️ Insurance</button>}
+              {!curSlot?.isBought&&<button onClick={()=>{setShowSecondary(false);setSheet("insurance");}} disabled={cantBet} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px", opacity:cantBet?0.4:1 }}> Insurance</button>}
               <button onClick={()=>{setShowSecondary(false);setTradeMode("buy");setSheet("trade");}} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px" }}> Buy Hand</button>
               <button onClick={()=>{setShowSecondary(false);setTradeMode("sell");setSheet("trade");}} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px" }}> Sell Hand</button>
             </div>
@@ -4129,7 +4202,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         <Sheet title="Blind Bet" subtitle="Bet before your cards are dealt. A hit pays 2× from the pot." onClose={() => setSheet(null)} landscape={landscape}>
           <ChipSelector denoms={denoms} max={Math.min(pot, humanPlayer?.chips||0)} value={betVal} onChange={setBetVal}/>
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:18 }}>
-            <button onClick={humanBlindBet} disabled={betVal===0} style={{ ...gBtn, opacity:betVal===0?0.4:1 }}>Blind Bet ${betVal||""}</button>
+            <button onClick={humanBlindBet} disabled={betVal===0} style={{ ...gBtn, opacity:betVal===0?0.4:1 }}>Blind Bet ◆{betVal||""}</button>
             <button onClick={() => setSheet(null)} style={sBtn}>Cancel</button>
           </div>
         </Sheet>
@@ -4198,7 +4271,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         );
       })()}
       {sheet==="insurance" && (
-        <Sheet title="🛡️ Doink Insurance" subtitle="Pay a premium upfront. If you doink, a portion of your penalty is covered." onClose={() => setSheet(null)} landscape={landscape}>
+        <Sheet title=" Doink Insurance" subtitle="Pay a premium upfront. If you doink, a portion of your penalty is covered." onClose={() => setSheet(null)} landscape={landscape}>
           <div style={{ background:"rgba(0,0,0,0.3)", borderRadius:14, padding:18, textAlign:"center", marginBottom:18, border:"1px solid rgba(255,255,255,0.08)" }}>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#D4A843", fontWeight:700, marginBottom:6 }}>Pay ${Math.max(1,Math.ceil(maxBet*0.09))} premium</div>
             <div style={{ fontSize:"0.9rem", color:"rgba(245,237,216,0.6)" }}>Covers ${Math.floor(maxBet*0.4)} of your doink penalty</div>
@@ -4960,11 +5033,17 @@ function Pillstat({ label, value }) {
 // ─────────────────────────────────────────────────────────
 // CAREER SESSION SUMMARY — shown after cash out / bust
 // ─────────────────────────────────────────────────────────
-function CareerSessionSummary({ result, oldBankroll, newBankroll, onContinue }) {
+function CareerSessionSummary({ result, oldBankroll, newBankroll, oldLevel, newLevel, onContinue }) {
   const net = result.net;
   const won = net > 0;
   const busted = result.reason === "bust" || result.cashOut === 0;
   const card = { background:"rgba(0,0,0,0.3)", borderRadius:12, padding:"10px 14px", border:"1px solid rgba(255,255,255,0.05)" };
+  // Did this session push the player up one or more levels?
+  const leveledUp = newLevel != null && oldLevel != null && newLevel > oldLevel;
+  // Which career tables (if any) the new level unlocked.
+  const newlyUnlockedTables = leveledUp
+    ? CAREER_TABLES.filter(t => t.unlockLevel > oldLevel && t.unlockLevel <= newLevel)
+    : [];
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 30%,#122A18,#080F0A 70%)" }}>
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:`calc(env(safe-area-inset-top) + 20px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
@@ -5009,6 +5088,34 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, onContinue }) 
               <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color:"#D4A843", fontWeight:700, marginTop:2 }}>+{result.xpEarned}</div>
             </div>
           </div>
+
+          {/* Level-up notification — shown when the session raised the
+              player's level. Calls out the new level and any tables it
+              unlocked. */}
+          {leveledUp && (
+            <div style={{
+              background:"linear-gradient(160deg,rgba(60,42,12,0.7),rgba(20,12,4,0.9))",
+              border:"1.5px solid rgba(212,168,67,0.6)", borderRadius:14,
+              padding:"14px 16px", marginBottom:14, textAlign:"center",
+              boxShadow:"0 0 28px rgba(212,168,67,0.25)",
+            }}>
+              <div style={{ fontSize:"0.62rem", letterSpacing:"0.24em", color:"rgba(212,168,67,0.8)", fontWeight:700, textTransform:"uppercase" }}>Level Up</div>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.5rem", color:"#F0C96A", fontWeight:900, lineHeight:1.15, marginTop:3, textShadow:"0 0 24px rgba(212,168,67,0.5)" }}>
+                Level {oldLevel} → {newLevel}
+              </div>
+              <div style={{ fontSize:"0.78rem", color:"rgba(245,237,216,0.65)", marginTop:3 }}>
+                You're now ranked <span style={{ color:"#F0C96A", fontWeight:700 }}>{rankForLevel(newLevel)}</span>.
+              </div>
+              {newlyUnlockedTables.length > 0 && (
+                <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid rgba(212,168,67,0.2)" }}>
+                  <div style={{ fontSize:"0.66rem", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:3 }}>Unlocked</div>
+                  {newlyUnlockedTables.map(t => (
+                    <div key={t.id} style={{ fontSize:"0.86rem", color:"#F0C96A", fontWeight:600 }}>{t.name}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Bankroll change */}
           <div style={{
@@ -5272,8 +5379,10 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
   const onCareerComplete = (result) => {
     setCareer(prev => {
       const old = prev.bankroll;
+      const oldLevel = getLevelFromXP(prev.xp);
       const merged = applyCareerSession(prev, result);
-      setPendingSummary({ result, oldBankroll: old, newBankroll: merged.bankroll });
+      const newLevel = getLevelFromXP(merged.xp);
+      setPendingSummary({ result, oldBankroll: old, newBankroll: merged.bankroll, oldLevel, newLevel });
       return merged;
     });
     setRoute("careerSummary");
@@ -5387,6 +5496,8 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
       result={pendingSummary.result}
       oldBankroll={pendingSummary.oldBankroll}
       newBankroll={pendingSummary.newBankroll}
+      oldLevel={pendingSummary.oldLevel}
+      newLevel={pendingSummary.newLevel}
       onContinue={() => { setPendingSummary(null); setRoute("careerHome"); }}
     />
   );

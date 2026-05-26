@@ -73,7 +73,7 @@ export const ACHIEVEMENTS = [
   { id:"put_on_table",   title:"Put It on the Table",desc:"Place your first bet.",           category:"Betting", rarity:"common",   target:1,   event:EVENTS.BET_PLACED, iconType:"chip" },
   { id:"pressure_play",  title:"Pressure Play",      desc:"Win a hand after betting.",       category:"Betting", rarity:"common",   target:1,   event:EVENTS.BET_WON,    iconType:"chip" },
   { id:"table_regular",  title:"Table Regular",      desc:"Place 100 total bets.",           category:"Betting", rarity:"rare",     target:100, event:EVENTS.BET_PLACED, iconType:"chip" },
-  { id:"big_swing",      title:"Big Swing",          desc:"Win a large pot.",                category:"Betting", rarity:"epic",     target:1,   event:EVENTS.BIG_POT_WON,iconType:"star" },
+  { id:"big_swing",      title:"Big Swing",          desc:"Win a pot of 200 or more chips.",                category:"Betting", rarity:"epic",     target:1,   event:EVENTS.BIG_POT_WON,iconType:"star" },
 
   // Blind Bets
   { id:"blind_faith",    title:"Blind Faith",        desc:"Win a hand after a blind bet.",   category:"Blind Bets", rarity:"uncommon", target:1,  event:EVENTS.BLIND_BET_WON,    iconType:"eye" },
@@ -82,18 +82,18 @@ export const ACHIEVEMENTS = [
   { id:"didnt_look",     title:"Didn't Need to Look",desc:"Win 5 blind-bet hands.",          category:"Blind Bets", rarity:"rare",     target:5,  event:EVENTS.BLIND_BET_WON,    iconType:"eye" },
 
   // Hand Buying
-  { id:"first_purchase", title:"First Purchase",     desc:"Buy another player's hand.",      category:"Hand Buying", rarity:"common",   target:1,  event:EVENTS.HAND_BOUGHT,     iconType:"handshake" },
-  { id:"bought_right",   title:"Bought Right",       desc:"Buy a hand and win the round.",   category:"Hand Buying", rarity:"uncommon", target:1,  event:EVENTS.HAND_BOUGHT_WON, iconType:"handshake" },
-  { id:"market_maker",   title:"Market Maker",       desc:"Buy 25 hands.",                   category:"Hand Buying", rarity:"epic",     target:25, event:EVENTS.HAND_BOUGHT,     iconType:"handshake" },
+  { id:"first_purchase", disabled:true, title:"First Purchase",     desc:"Buy another player's hand.",      category:"Hand Buying", rarity:"common",   target:1,  event:EVENTS.HAND_BOUGHT,     iconType:"handshake" },
+  { id:"bought_right", disabled:true,   title:"Bought Right",       desc:"Buy a hand and win the round.",   category:"Hand Buying", rarity:"uncommon", target:1,  event:EVENTS.HAND_BOUGHT_WON, iconType:"handshake" },
+  { id:"market_maker", disabled:true,   title:"Market Maker",       desc:"Buy 25 hands.",                   category:"Hand Buying", rarity:"epic",     target:25, event:EVENTS.HAND_BOUGHT,     iconType:"handshake" },
 
   // Hand Selling
-  { id:"first_sale",     title:"First Sale",         desc:"Sell your hand.",                 category:"Hand Selling", rarity:"common",   target:1,  event:EVENTS.HAND_SOLD, iconType:"tag" },
-  { id:"dealers_choice", title:"Dealer's Choice",    desc:"Sell 25 hands.",                  category:"Hand Selling", rarity:"epic",     target:25, event:EVENTS.HAND_SOLD, iconType:"tag" },
+  { id:"first_sale", disabled:true,     title:"First Sale",         desc:"Sell your hand.",                 category:"Hand Selling", rarity:"common",   target:1,  event:EVENTS.HAND_SOLD, iconType:"tag" },
+  { id:"dealers_choice", disabled:true, title:"Dealer's Choice",    desc:"Sell 25 hands.",                  category:"Hand Selling", rarity:"epic",     target:25, event:EVENTS.HAND_SOLD, iconType:"tag" },
 
   // Counters
-  { id:"countered",      title:"Countered",          desc:"Receive your first counteroffer.",category:"Counters", rarity:"common",   target:1,  event:EVENTS.COUNTER_RECEIVED, iconType:"scale" },
-  { id:"deal_maker",     title:"Deal Maker",         desc:"Accept a counteroffer.",          category:"Counters", rarity:"uncommon", target:1,  event:EVENTS.COUNTER_ACCEPTED, iconType:"scale" },
-  { id:"negotiator",     title:"Negotiator",         desc:"Complete 25 counteroffer interactions.",category:"Counters", rarity:"epic", target:25, event:EVENTS.COUNTER_RECEIVED, iconType:"scale" },
+  { id:"countered", disabled:true,      title:"Countered",          desc:"Receive your first counteroffer.",category:"Counters", rarity:"common",   target:1,  event:EVENTS.COUNTER_RECEIVED, iconType:"scale" },
+  { id:"deal_maker", disabled:true,     title:"Deal Maker",         desc:"Accept a counteroffer.",          category:"Counters", rarity:"uncommon", target:1,  event:EVENTS.COUNTER_ACCEPTED, iconType:"scale" },
+  { id:"negotiator", disabled:true,     title:"Negotiator",         desc:"Complete 25 counteroffer interactions.",category:"Counters", rarity:"epic", target:25, event:EVENTS.COUNTER_RECEIVED, iconType:"scale" },
 
   // DOINK
   { id:"first_doink",    title:"First DOINK",        desc:"Trigger your first DOINK moment.",category:"DOINK Moments", rarity:"uncommon", target:1,  event:EVENTS.DOINK_TRIGGERED, iconType:"doink" },
@@ -133,7 +133,13 @@ export const ACHIEVEMENTS = [
   { id:"beat_emmanuel", title:"Beat Emmanuel", desc:"Beat Emmanuel in a session.", category:"Bot Rivals", rarity:"uncommon", target:1, event:EVENTS.BOT_BEATEN, meta:{ bot:"Emmanuel" }, hidden:true, iconType:"medal" },
 ];
 
-export const CATEGORIES = [...new Set(ACHIEVEMENTS.map(a => a.category))];
+// Active achievements = everything not `disabled`. Disabled achievements
+// (e.g. hand-trading ones while that feature is hidden — J10/J12) are kept
+// in ACHIEVEMENTS so they can be restored, but excluded from the list the
+// player sees, the total count, and the unlock engine.
+export const ACTIVE_ACHIEVEMENTS = ACHIEVEMENTS.filter(a => !a.disabled);
+
+export const CATEGORIES = [...new Set(ACTIVE_ACHIEVEMENTS.map(a => a.category))];
 
 // Look up by id
 const BY_ID = Object.fromEntries(ACHIEVEMENTS.map(a => [a.id, a]));
@@ -155,7 +161,7 @@ export function applyAchievementEvent(career, eventName, payload = {}) {
   const unlockedIds = new Set(unlockedList.map(a => a.id));
   const newlyUnlocked = [];
 
-  for (const ach of ACHIEVEMENTS) {
+  for (const ach of ACTIVE_ACHIEVEMENTS) {
     if (ach.event !== eventName) continue;
     if (unlockedIds.has(ach.id)) continue;
     // meta matcher (e.g. specific bot name)
@@ -185,7 +191,8 @@ export function applyAchievementEvent(career, eventName, payload = {}) {
 
 // Convenience: unlocked-count / total for the screen header.
 export function achievementSummary(career) {
-  const total = ACHIEVEMENTS.length;
-  const unlocked = (career?.achievements || []).length;
+  const total = ACTIVE_ACHIEVEMENTS.length;
+  const activeIds = new Set(ACTIVE_ACHIEVEMENTS.map(a => a.id));
+  const unlocked = (career?.achievements || []).filter(a => activeIds.has(a.id)).length;
   return { unlocked, total };
 }

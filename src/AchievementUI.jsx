@@ -3,7 +3,7 @@
 // All icons are inline SVG (no emoji), consistent across platforms.
 // ═══════════════════════════════════════════════════════════
 import { useState, useEffect } from "react";
-import { ACHIEVEMENTS, CATEGORIES, RARITY, achievementSummary } from "./achievements.js";
+import { ACTIVE_ACHIEVEMENTS, CATEGORIES, RARITY, achievementSummary } from "./achievements.js";
 
 // ── Badge icon ──────────────────────────────────────────────
 // A medallion: rarity-colored ring + a glyph chosen by iconType.
@@ -143,7 +143,7 @@ export function AchievementsScreen({ career, onBack }) {
   const progress = career?.achievementProgress || {};
 
   const cats = ["All", ...CATEGORIES];
-  const shown = ACHIEVEMENTS.filter(a => cat === "All" || a.category === cat);
+  const shown = ACTIVE_ACHIEVEMENTS.filter(a => cat === "All" || a.category === cat);
 
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)", fontFamily:"'DM Sans',sans-serif" }}>
