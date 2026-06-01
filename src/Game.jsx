@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useReducer, useCallback } from "react";
 import { PrivacyPolicy, TermsOfUse, AccountDeletion, SupportPage } from "./LegalPages.jsx";
 import { EVENTS, applyAchievementEvent, achievementCoinReward } from "./achievements.js";
+import { playSound, primeSounds } from "./sound.js";
+import { haptic } from "./haptics.js";
 import { AchievementToasts, AchievementsScreen } from "./AchievementUI.jsx";
 
 // Developer name shown in the in-app About section.
@@ -280,6 +282,40 @@ const rankForLevel = lvl => {
   if (lvl >= 4)  return "Regular";
   return "Rookie";
 };
+
+// ─────────────────────────────────────────────────────────
+// K4 — CRASH / LEAVE SAFETY (localStorage live-session record)
+//
+// While a career session is in progress we save a small record of the seat
+// chips at stable moments (round start/end). If the app closes without a
+// clean ending (crash, tab close, force-quit), the record survives. On next
+// launch we credit those chips back to the bankroll exactly once, then delete
+// the record. Every NORMAL ending clears the record, so a completed session
+// never triggers recovery (no double-credit).
+//
+// Safety rules:
+//   • Record stores SEAT CHIPS at the last stable point — never mid-bet.
+//   • Recovery deletes the record BEFORE/at crediting, and the credit path is
+//     guarded so it can only ever run once.
+//   • Stats/XP/streak are NOT recorded for a recovered crash.
+// ─────────────────────────────────────────────────────────
+const LIVE_SESSION_KEY = "gapperLiveSession";
+
+function writeLiveSession(rec) {
+  try { localStorage.setItem(LIVE_SESSION_KEY, JSON.stringify(rec)); } catch {}
+}
+function clearLiveSession() {
+  try { localStorage.removeItem(LIVE_SESSION_KEY); } catch {}
+}
+function readLiveSession() {
+  try {
+    const raw = localStorage.getItem(LIVE_SESSION_KEY);
+    if (!raw) return null;
+    const rec = JSON.parse(raw);
+    if (!rec || rec.inProgress !== true) return null;
+    return rec;
+  } catch { return null; }
+}
 
 // applyCareerSession: pure function that merges a finished session into a career.
 const applyCareerSession = (career, result) => {
@@ -943,6 +979,25 @@ function getSeatPositions(players, landscape) {
 // ─────────────────────────────────────────────────────────
 // CARD & PLACEHOLDER
 // ─────────────────────────────────────────────────────────
+// A very compact card chip (rank + suit) for dense lists like the round
+// recap, where the full Card component would be far too large.
+function MiniCard({ card }) {
+  if (!card) return null;
+  const isRed = RED.has(card.suit);
+  return (
+    <span style={{
+      display:"inline-flex", alignItems:"center", justifyContent:"center", gap:1,
+      minWidth:26, height:30, padding:"0 5px", borderRadius:5,
+      background:"linear-gradient(160deg,#FFFFFF,#F4EFE0)",
+      border:"1px solid rgba(0,0,0,0.18)", boxShadow:"0 1px 3px rgba(0,0,0,0.5)",
+      fontFamily:"'DM Sans',sans-serif", fontWeight:800, fontSize:"0.8rem",
+      color: isRed ? "#C0392B" : "#0D0D1A", lineHeight:1,
+    }}>
+      {card.rank}<span style={{ fontSize:"0.72rem" }}>{card.suit}</span>
+    </span>
+  );
+}
+
 function Card({ card, faceDown = false, small = false, animClass = "deal-anim", delay = 0, glow = false, scale = 1 }) {
   if (!card && !faceDown) return <Placeholder small={small} scale={scale} />;
   const W = (small ? 46 : 82) * scale, H = (small ? 64 : 116) * scale;
@@ -1594,7 +1649,7 @@ function DoinkFullScreen({ name }) {
         color:"#fff", letterSpacing:"0.04em", lineHeight:1,
         textShadow:"0 0 30px rgba(231,76,60,1),0 0 80px rgba(231,76,60,0.9),0 8px 0 rgba(0,0,0,0.55)",
         animation:"doinkStamp .42s cubic-bezier(.34,1.56,.5,1) both",
-      }}>DOINK</div>
+      }}>GAPPER</div>
       <div style={{
         display:"flex", alignItems:"center", gap:8, marginTop:14,
         animation:"fadeUp .3s .18s both",
@@ -1836,7 +1891,7 @@ function RulesPage({ onClose }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"linear-gradient(160deg,#0C1A10,#060D08)", zIndex:100, overflowY:"auto", padding:`calc(env(safe-area-inset-top) + 16px) 24px 80px` }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:28 }}>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.8rem", color:"#D4A843", fontWeight:900, letterSpacing:"0.01em" }}>DOINK</div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.8rem", color:"#D4A843", fontWeight:900, letterSpacing:"0.01em" }}>GAPPER</div>
         <button onClick={onClose} style={{ ...sBtn, padding:"10px 18px", fontSize:"0.9rem" }}>← Back</button>
       </div>
       <div style={{ maxWidth:480, margin:"0 auto" }}>
@@ -1847,7 +1902,7 @@ function RulesPage({ onClose }) {
         {sec("Hand Trading","Buy or sell hands at any point. The buyer plays both their hand AND the bought hand, in original turn order. You collect payment immediately when you sell.")}
         {sec("Insurance","Pay a premium upfront. If you doink, a portion of your penalty is covered.")}
         {sec("Strategy","Wide spreads (A–K) = play big. Narrow spreads = pass or doink bet. Selling a trash hand for chips beats passing. Position matters — going early in a fat pot differs from going late.")}
-        {sec("Fictional Play Only","DOINK uses fictional play chips. No real money is wagered, won, lost, or redeemable. Chips, levels, and rankings are for entertainment only.")}
+        {sec("Fictional Play Only","Gapper uses fictional play chips. No real money is wagered, won, lost, or redeemable. Chips, levels, and rankings are for entertainment only.")}
       </div>
     </div>
   );
@@ -2239,6 +2294,19 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
                   })}
                 </div>
               )}
+              {/* The cards this player held this round + the hit card. */}
+              {p.cards && p.cards.length > 0 && (
+                <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:7, paddingLeft:36 }}>
+                  <MiniCard card={p.cards[0]} />
+                  <MiniCard card={p.cards[1]} />
+                  {p.hitCard && (
+                    <>
+                      <span style={{ color:"rgba(245,237,216,0.3)", fontSize:"0.7rem", margin:"0 2px" }}>hit</span>
+                      <MiniCard card={p.hitCard} />
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -2494,7 +2562,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   // True briefly while the deck riffle/shuffle animation plays.
   const [shuffling, setShuffling] = useState(false);
   const [round, setRound] = useState(1);
-  const [log, setLog] = useState([{ msg: "Welcome to DOINK! ", type: "info" }]);
+  const [log, setLog] = useState([{ msg: "Welcome to Gapper! ", type: "info" }]);
   const [sheet, setSheet] = useState(null);
   const [betVal, setBetVal] = useState(0);
   const [locked, setLocked] = useState(false);
@@ -2745,7 +2813,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     if (slot.blindCommitted) {
       const t = setTimeout(() => {
         execBet(slot, p, slot.blindAmount || p.bet || 0, "blind");
-      }, p.isBot ? 1200 : 700);
+      }, p.isBot ? 900 : 700);
       return () => clearTimeout(t);
     }
 
@@ -2764,9 +2832,9 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         const t2 = setTimeout(() => {
           setBotThinking(null);
           runBotSlot(slot, p);
-        }, 1500);
+        }, 1100);   // K2: trimmed from 1500 — bots act a touch faster
         return () => clearTimeout(t2);
-      }, 900);
+      }, 750);      // K2: pre-turn settle trimmed from 900
       return () => clearTimeout(t1);
     } else {
       const isRoundStarter = idx === 0;
@@ -2977,6 +3045,8 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
     // PACING: bet marker visible for 750ms, THEN reveal hit card, THEN 700ms pause before result
     setTimeout(() => {
+      playSound("flip");
+      haptic("flip");
       if (!slot.isBought) {
         setPlayers(prev => prev.map(pl => pl.id === p.id ? { ...pl, hitCard } : pl));
       } else {
@@ -3088,6 +3158,18 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
         }
 
         const finalChips = Math.max(0, chipsAfterBet + chipDelta);
+
+        // ── Sound cues for the human's own result ──
+        // Big win for the high-payout bet types; standard win/doink otherwise.
+        if (!p.isBot) {
+          if (outcome === "win") {
+            playSound((type === "mythical" || type === "doubledoink") ? "bigwin" : "win");
+            haptic((type === "mythical" || type === "doubledoink") ? "bigwin" : "win");
+          } else if (outcome === "doink") {
+            playSound("doink");
+            haptic("doink");
+          }
+        }
 
         // ── Achievement events ──
         // These fire for the human's own actions (achievements are personal).
@@ -3225,14 +3307,30 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   // ── NEXT ROUND
   const nextRound = () => {
     const alive = players.filter(p => p.chips > 0);
+    const human = players.find(p => !p.isBot);
+    const humanBroke = (human?.chips || 0) <= 0;
+
+    // K3 — OUTLAST BONUS: in career mode, if the human is the only player
+    // left with chips (every bot is broke) and the pot still holds money,
+    // the player has "cleaned out the table." Auto-end the session and pay a
+    // bonus: stack + min(1.5 × buyIn, pot). The stack is cashed out normally;
+    // the bonus is the capped pot collection on top.
+    if (isCareer && !humanBroke) {
+      const botsAlive = players.some(p => p.isBot && p.chips > 0);
+      const potLeft = potRef.current || 0;
+      if (!botsAlive && potLeft > 0) {
+        const buyIn = cfg.careerSession?.buyIn || 0;
+        const bonus = Math.min(Math.round(buyIn * 1.5), potLeft);
+        finishCareerSession("outlast", bonus);
+        return;
+      }
+    }
+
     // End conditions:
     //  • Fewer than 2 players with chips → game over.
     //  • CAREER MODE: the human is broke. The session must end with a summary
     //    — otherwise the table would try to start a round with no human seat
-    //    and freeze. (Previously only checked alive.length, so a broke human
-    //    with solvent bots left the game stuck.)
-    const human = players.find(p => !p.isBot);
-    const humanBroke = (human?.chips || 0) <= 0;
+    //    and freeze.
     if (alive.length < 2 || (isCareer && humanBroke)) {
       setPhase("over");
       return;
@@ -3240,6 +3338,16 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     setSeatAnims({}); setPendingOffer(null); setPendingSellOffer(null); setSheet(null); setTurnQueue([]); setQueueIdx(0);
     setHistory([]);
     queueIdxRef.current = 0;
+    // K4: stable moment — record the human's seat chips for crash recovery.
+    if (isCareer && human) {
+      writeLiveSession({
+        inProgress: true,
+        tableId: cfg.tableId,
+        tableName: cfg.careerSession?.tableName,
+        buyIn: cfg.careerSession?.buyIn || 0,
+        seatChips: Math.max(0, human.chips || 0),
+      });
+    }
     const newFirst = (firstIdx + 1) % alive.length;
     setFirstIdx(newFirst);
     setRound(r => r + 1);
@@ -3252,12 +3360,19 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   // ── CAREER: build a session result and pass it up to App ──
   // Called when the player cashes out at round summary OR when the player
   // busts (chips → 0). Idempotent via careerCompletedRef so it only fires once.
-  const finishCareerSession = (reason) => {
+  const finishCareerSession = (reason, outlastBonus = 0) => {
     if (!isCareer) return;
     if (careerCompletedRef.current) return;
     careerCompletedRef.current = true;
+    // K4: a normal ending handles chips via the session result, so the
+    // live-session record must be cleared — otherwise launch recovery would
+    // double-credit.
+    clearLiveSession();
     const human = playersRef.current.find(p => !p.isBot);
-    const cashOut = Math.max(0, human?.chips || 0);
+    const stack = Math.max(0, human?.chips || 0);
+    // The outlast bonus (K3) is added on top of the player's stack cash-out.
+    const bonus = Math.max(0, outlastBonus || 0);
+    const cashOut = stack + bonus;
     const buyIn = cfg.careerSession?.buyIn || 0;
     const st = careerStatsRef.current;
     const net = cashOut - buyIn;
@@ -3267,6 +3382,8 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
       tableName: cfg.careerSession?.tableName,
       buyIn,
       cashOut,
+      stack,
+      outlastBonus: bonus,
       net,
       roundsPlayed: st.roundsPlayed,
       spreadWins: st.spreadWins,
@@ -3481,6 +3598,9 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
 
   const humanBet = type => {
     if (betVal <= 0 || locked || !curSlot || !curPlayer) return;
+    primeSounds();        // unlock audio on first interaction
+    playSound("chip");
+    haptic("chip");
     // Acting in the round withdraws any open sell offer (the hand is now
     // committed to a bet, so it can't also be sold).
     withdrawSellOffer();
@@ -3496,6 +3616,9 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   };
   const humanBlindBet = () => {
     if (betVal <= 0) return;
+    primeSounds();
+    playSound("chip");
+    haptic("chip");
     const h = playersRef.current.find(p => !p.isBot);
     if (!h) return;
     addLog(`${h.name} blind bets ◆${betVal}!`);
@@ -3613,7 +3736,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
       }}>
         {/* Left — logo */}
         <div style={{ display:"flex", alignItems:"center", justifySelf:"start" }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:landscape?"1.2rem":"1.3rem", color:"#D4A843", fontWeight:900, letterSpacing:"0.06em", textShadow:"0 0 18px rgba(212,168,67,0.4)", lineHeight:1 }}>DOINK</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:landscape?"1.2rem":"1.3rem", color:"#D4A843", fontWeight:900, letterSpacing:"0.06em", textShadow:"0 0 18px rgba(212,168,67,0.4)", lineHeight:1 }}>GAPPER</div>
         </div>
 
         {/* Center — Round + Pot, the two live stats */}
@@ -3741,7 +3864,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
                 {/* Soft center light pool — neutral warm when a theme is set */}
                 <div style={{ position:"absolute", top:"34%", left:"50%", transform:"translate(-50%,-50%)", width:"70%", height:"42%", background: qpTheme ? "radial-gradient(ellipse, rgba(255,240,210,0.10) 0%, transparent 70%)" : "radial-gradient(ellipse, rgba(120,220,150,0.18) 0%, transparent 70%)", pointerEvents:"none" }}/>
                 {/* DOINK watermark — sits above the pot so it stays visible */}
-                <div style={{ position:"absolute", top:"26%", left:"50%", transform:"translate(-50%,-50%)", fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:landscape?"2.6rem":"3rem", color:"rgba(240,201,106,0.34)", letterSpacing:"0.08em", textShadow:"0 2px 6px rgba(0,0,0,0.5), 0 0 20px rgba(212,168,67,0.25)", pointerEvents:"none", whiteSpace:"nowrap" }}>DOINK</div>
+                <div style={{ position:"absolute", top:"26%", left:"50%", transform:"translate(-50%,-50%)", fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:landscape?"2.6rem":"3rem", color:"rgba(240,201,106,0.34)", letterSpacing:"0.08em", textShadow:"0 2px 6px rgba(0,0,0,0.5), 0 0 20px rgba(212,168,67,0.25)", pointerEvents:"none", whiteSpace:"nowrap" }}>GAPPER</div>
                 {/* Payout key — curved across the upper felt */}
                 <div style={{ position:"absolute", top:"11%", left:"50%", transform:"translateX(-50%)", display:"flex", gap:landscape?20:14, alignItems:"center", pointerEvents:"none", opacity:0.7 }}>
                   {[{label:"SPREAD",pay:"1:1",color:"rgba(245,237,216,0.9)"},{label:"BLIND",pay:"2:1",color:"#F0C96A"},{label:"DOINK",pay:"7:1",color:"#E74C3C"},{label:"MYTHICAL",pay:"12:1",color:"#C39BD3"}].map(({label,pay,color})=>(
@@ -4399,8 +4522,8 @@ function Tutorial({ onClose }) {
   const steps = [
     {
       icon: "",
-      title: "Welcome to DOINK",
-      body: "DOINK is a card-betting game of pure chaos. The pot is everyone's money. You bet against it on every hand. Win and you take a piece. Doink, and you pay the pot DOUBLE.",
+      title: "Welcome to Gapper",
+      body: "Gapper is a card-betting game of pure chaos. The pot is everyone's money. You bet against it on every hand. Win and you take a piece. Doink, and you pay the pot DOUBLE.",
     },
     {
       icon: "",
@@ -4512,7 +4635,7 @@ function UnlockRewardPopup({ milestone, onClose }) {
 // ─────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────
 // SETTINGS — Account, Notifications, Sound & Haptics, Help,
-// About DOINK, Legal, Danger Zone. (Sound & Haptics is a
+// About Gapper, Legal, Danger Zone. (Sound & Haptics is a
 // placeholder filled in by J15.)
 // ─────────────────────────────────────────────────────────
 function SettingsScreen({ career, isGuest, onBack, onResetCareer, onOpenLegal, onSignOut, onRequireSignIn }) {
@@ -4611,11 +4734,11 @@ function SettingsScreen({ career, isGuest, onBack, onResetCareer, onOpenLegal, o
           </div>
         </div>
 
-        {/* About DOINK — moved here from Profile */}
+        {/* About Gapper — moved here from Profile */}
         <div style={card}>
-          <div style={sectionLabel}>About DOINK</div>
+          <div style={sectionLabel}>About Gapper</div>
           <p style={{ fontSize:"0.82rem", lineHeight:1.6, color:"rgba(245,237,216,0.7)", margin:0 }}>
-            DOINK is a fictional play-chip card strategy game. No real money is wagered,
+            Gapper is a fictional play-chip card strategy game. No real money is wagered,
             won, lost, deposited, withdrawn, or redeemed. Chips, scores, levels, unlocks,
             and leaderboard rankings are fictional and for entertainment only.
           </p>
@@ -4707,7 +4830,7 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, onSettings, hasCareer, 
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:`calc(env(safe-area-inset-top) + 64px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
         {/* Wordmark */}
         <div style={{ textAlign:"center", marginBottom:30 }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:"clamp(3.4rem,14vw,5.4rem)", color:"#D4A843", textShadow:"0 0 50px rgba(212,168,67,0.45),0 4px 0 rgba(0,0,0,0.5)", lineHeight:1, letterSpacing:"0.05em" }}>DOINK</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:"clamp(3.4rem,14vw,5.4rem)", color:"#D4A843", textShadow:"0 0 50px rgba(212,168,67,0.45),0 4px 0 rgba(0,0,0,0.5)", lineHeight:1, letterSpacing:"0.05em" }}>GAPPER</div>
           <div style={{ height:2, background:"linear-gradient(90deg,transparent,#D4A843,transparent)", margin:"14px auto 8px", width:160 }} />
           <div style={{ fontSize:"0.74rem", color:"rgba(212,168,67,0.55)", letterSpacing:"0.22em", fontWeight:600, textTransform:"uppercase" }}>A Card Game of Pure Chaos</div>
         </div>
@@ -4807,7 +4930,7 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, onSettings, hasCareer, 
 
           {/* App-store readiness: fictional-chips disclaimer in the footer. */}
           <p style={{ fontSize:"0.68rem", color:"rgba(245,237,216,0.32)", textAlign:"center", lineHeight:1.6, marginTop:10, padding:"0 8px" }}>
-            DOINK uses fictional play chips only. No real money, prizes,
+            Gapper uses fictional play chips only. No real money, prizes,
             cash-out, or redeemable value.
           </p>
         </div>
@@ -5037,6 +5160,7 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, oldLevel, newL
   const net = result.net;
   const won = net > 0;
   const busted = result.reason === "bust" || result.cashOut === 0;
+  const outlasted = result.reason === "outlast";
   const card = { background:"rgba(0,0,0,0.3)", borderRadius:12, padding:"10px 14px", border:"1px solid rgba(255,255,255,0.05)" };
   // Did this session push the player up one or more levels?
   const leveledUp = newLevel != null && oldLevel != null && newLevel > oldLevel;
@@ -5055,10 +5179,15 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, oldLevel, newL
           boxShadow:`0 24px 80px rgba(0,0,0,0.96), 0 0 60px ${busted?"rgba(231,76,60,0.2)":won?"rgba(39,174,96,0.22)":"rgba(212,168,67,0.18)"}`,
         }}>
           <div style={{ textAlign:"center", marginBottom:22 }}>
-            <div style={{ fontSize:"0.62rem", letterSpacing:"0.28em", color:"rgba(212,168,67,0.6)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>{result.tableName}</div>
+            <div style={{ fontSize:"0.62rem", letterSpacing:"0.28em", color:"rgba(212,168,67,0.6)", fontWeight:700, textTransform:"uppercase", marginBottom:6 }}>{outlasted ? "You Outlasted Everyone" : result.tableName}</div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2rem", color: busted?"#E74C3C":won?"#27AE60":"#F0C96A", fontWeight:900, lineHeight:1, textShadow:`0 0 28px ${busted?"rgba(231,76,60,0.55)":won?"rgba(39,174,96,0.55)":"rgba(212,168,67,0.55)"}` }}>
-              {busted ? "Busted Out" : won ? `Up ◆${net}` : net < 0 ? `Down ◆${Math.abs(net)}` : "Broke Even"}
+              {outlasted ? "Table Cleared!" : busted ? "Busted Out" : won ? `Up ◆${net}` : net < 0 ? `Down ◆${Math.abs(net)}` : "Broke Even"}
             </div>
+            {outlasted && (
+              <div style={{ fontSize:"0.82rem", color:"rgba(245,237,216,0.7)", marginTop:8, lineHeight:1.5 }}>
+                Every opponent is broke. You took the table and collected an outlast bonus from the pot.
+              </div>
+            )}
           </div>
 
           {/* Net / chips */}
@@ -5076,6 +5205,20 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, oldLevel, newL
               <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1rem", color: net>0?"#27AE60":net<0?"#E74C3C":"#F0C96A", fontWeight:700, marginTop:2 }}>{net>=0?`+◆${net}`:`−◆${Math.abs(net)}`}</div>
             </div>
           </div>
+
+          {/* Outlast bonus breakdown (K3) */}
+          {outlasted && result.outlastBonus > 0 && (
+            <div style={{ ...card, marginBottom:14, border:"1px solid rgba(212,168,67,0.4)", background:"rgba(212,168,67,0.08)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span style={{ fontSize:"0.8rem", color:"rgba(245,237,216,0.75)", fontWeight:600 }}>Your stack</span>
+                <span style={{ fontSize:"0.85rem", color:"#F0C96A", fontWeight:700 }}>◆{result.stack}</span>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:5 }}>
+                <span style={{ fontSize:"0.8rem", color:"rgba(212,168,67,0.9)", fontWeight:700 }}>+ Outlast bonus</span>
+                <span style={{ fontSize:"0.85rem", color:"#27AE60", fontWeight:800 }}>+◆{result.outlastBonus}</span>
+              </div>
+            </div>
+          )}
 
           {/* Rounds + XP */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
@@ -5292,6 +5435,26 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
     return () => document.head.removeChild(el);
   }, []);
 
+  // K4 — CRASH/LEAVE RECOVERY (runs once on launch).
+  // If a live-session record survived (app closed without a clean ending),
+  // credit those seat chips back to the bankroll exactly once, then clear the
+  // record. Guarded by a ref so React strict-mode double-invoke can't double
+  // credit, and we clear the record BEFORE crediting so a reload mid-credit
+  // can't replay it. No stats/XP are recorded for a recovered crash.
+  const recoveryDoneRef = useRef(false);
+  useEffect(() => {
+    if (recoveryDoneRef.current) return;
+    recoveryDoneRef.current = true;
+    if (isGuest) { clearLiveSession(); return; }   // guests have no bankroll to credit
+    const rec = readLiveSession();
+    if (!rec) return;
+    const chips = Math.max(0, Math.floor(rec.seatChips || 0));
+    clearLiveSession();                            // delete FIRST — can't replay
+    if (chips > 0) {
+      setCareer(c => c ? { ...c, bankroll: (c.bankroll || 0) + chips } : c);
+    }
+  }, [isGuest, setCareer]);
+
   // ── Achievement event handler ────────────────────────────
   // Central entry point: gameplay and career flow call emitAchievement(event,
   // payload). It runs the progress engine, persists progress + unlocks into
@@ -5310,6 +5473,8 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
         const totalCoins = withRewards.reduce((s, a) => s + (a.coinReward || 0), 0);
         bankroll = (c.bankroll || 0) + totalCoins;
         setAchQueue(q => [...q, ...withRewards]);
+        playSound("achievement");
+        haptic("achievement");
       }
       return { ...c, bankroll, achievementProgress: progress, achievements: unlocked };
     });
@@ -5351,6 +5516,10 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
   const startCareerTable = (table) => {
     // Deduct buy-in immediately so it's tracked even if app reloads mid-session.
     setCareer(c => ({ ...c, bankroll: c.bankroll - table.buyIn }));
+    // K4: open a live-session record. Seat chips start at the buy-in; this is
+    // updated at stable moments and cleared on any normal ending. If the app
+    // dies before that, launch recovery credits these chips back.
+    writeLiveSession({ inProgress: true, tableId: table.id, tableName: table.name, buyIn: table.buyIn, seatChips: table.buyIn });
     const botNames = pickCareerRivals(table);
     setCfg({
       mode: "career",

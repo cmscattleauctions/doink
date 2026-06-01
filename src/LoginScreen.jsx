@@ -28,7 +28,7 @@ export default function LoginScreen({ error, reason, onBack }) {
           fontSize: "clamp(4rem,16vw,6.5rem)", color: "#D4A843",
           textShadow: "0 0 50px rgba(212,168,67,0.45),0 4px 0 rgba(0,0,0,0.5)",
           lineHeight: 1, letterSpacing: "0.05em",
-        }}>DOINK</div>
+        }}>GAPPER</div>
         <div style={{ height: 2, background: "linear-gradient(90deg,transparent,#D4A843,transparent)", margin: "16px auto 10px", width: 180 }} />
         <div style={{ fontSize: "0.8rem", color: "rgba(212,168,67,0.55)", letterSpacing: "0.22em", fontWeight: 600, textTransform: "uppercase" }}>
           A Card Game of Pure Chaos
@@ -61,7 +61,7 @@ export default function LoginScreen({ error, reason, onBack }) {
           <p style={{ color: "#E74C3C", fontSize: "0.82rem", marginTop: 16 }}>{error}</p>
         )}
         <p style={{ color: "rgba(245,237,216,0.4)", fontSize: "0.72rem", lineHeight: 1.6, marginTop: 28 }}>
-          DOINK uses fictional play chips only. No real money, prizes,
+          Gapper uses fictional play chips only. No real money, prizes,
           cash-out, or redeemable value.
         </p>
       </div>

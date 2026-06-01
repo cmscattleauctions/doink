@@ -32,7 +32,7 @@ function Splash({ text }) {
         <div style={{
           fontFamily: "'Playfair Display', serif", fontWeight: 900, fontSize: "3.5rem",
           color: "#D4A843", textShadow: "0 0 40px rgba(212,168,67,0.4)", letterSpacing: "0.05em",
-        }}>DOINK</div>
+        }}>GAPPER</div>
         <div style={{ color: "rgba(245,237,216,0.5)", fontSize: "0.9rem", marginTop: 10 }}>{text}</div>
       </div>
     </div>

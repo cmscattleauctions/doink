@@ -34,7 +34,7 @@ export function UsernamePicker({ suggested, onConfirm }) {
   return (
     <div style={shell}>
       <div style={{ textAlign:"center", marginBottom:28 }}>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:"3rem", color:"#D4A843", textShadow:"0 0 40px rgba(212,168,67,0.4)", letterSpacing:"0.04em" }}>DOINK</div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontWeight:900, fontSize:"3rem", color:"#D4A843", textShadow:"0 0 40px rgba(212,168,67,0.4)", letterSpacing:"0.04em" }}>GAPPER</div>
         <div style={{ fontSize:"0.78rem", color:"rgba(212,168,67,0.55)", letterSpacing:"0.18em", fontWeight:600, textTransform:"uppercase", marginTop:6 }}>Pick Your Table Name</div>
       </div>
 
@@ -78,9 +78,9 @@ export function UsernamePicker({ suggested, onConfirm }) {
 // understands the bet types before sitting at a real table.
 const TUTORIAL_STEPS = [
   {
-    title: "Welcome to DOINK",
+    title: "Welcome to Gapper",
     cards: null,
-    body: "DOINK is a fictional play-chip card game of nerve and timing. Every player antes into the pot, gets two cards, and bets on what the hit card will be. Let's walk through it.",
+    body: "Gapper is a fictional play-chip card game of nerve and timing. Every player antes into the pot, gets two cards, and bets on what the hit card will be. Let's walk through it.",
   },
   {
     title: "Your Two Cards",
