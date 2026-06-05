@@ -33,14 +33,15 @@ export default function Leaderboard({ onBack, myUid }) {
 
   return (
     <div className="ios-scroll" style={{ background: "radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)", minHeight: "100vh", fontFamily: "'DM Sans', sans-serif" }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "calc(env(safe-area-inset-top) + 18px) 22px calc(40px + env(safe-area-inset-bottom))" }}>
-        {/* Header — sticky so it stays visible while the list scrolls */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "0 22px calc(40px + env(safe-area-inset-bottom))" }}>
+        {/* Header — sticky, anchored to the true top edge, carrying the
+            safe-area inset itself so its background fills the notch area. */}
         <div style={{
-          position: "sticky", top: "env(safe-area-inset-top)", zIndex: 20,
+          position: "sticky", top: 0, zIndex: 20,
           width: "100%", maxWidth: 460,
           display: "flex", justifyContent: "space-between", alignItems: "center",
-          marginBottom: 18, padding: "10px 0",
-          background: "linear-gradient(180deg, #0C1A10 0%, #0C1A10 75%, transparent 100%)",
+          marginBottom: 18, padding: "calc(env(safe-area-inset-top) + 12px) 0 12px",
+          background: "linear-gradient(180deg, #0C1A10 0%, #0C1A10 80%, transparent 100%)",
         }}>
           <button onClick={onBack} style={backBtn}>← Back</button>
           <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.4rem", color: "#D4A843", fontWeight: 700, letterSpacing: "0.04em" }}>Leaderboard</div>

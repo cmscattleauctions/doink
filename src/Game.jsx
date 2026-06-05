@@ -155,22 +155,30 @@ const shuffleBotNames = () => {
 
 const CAREER_KEY = "doinkCareerV1";
 
+// Ante is computed as 0.5% of the table's buy-in, rounded to a whole number,
+// minimum 1. Centralizing it here means any room (current or future) gets a
+// correct ante automatically from its buy-in — no hand-set ante values.
+const computeAnte = buyIn => Math.max(1, Math.round((buyIn || 0) * 0.005));
+
 const CAREER_TABLES = [
-  { id: "garage",     name: "Garage Game",         subtitle: "Low stakes. Friendly chaos.",       minBankroll: 0,     buyIn: 100,  bots: 3, ante: 1,  unlockLevel: 1,
+  { id: "garage",     name: "Garage Game",         subtitle: "Low stakes. Friendly chaos.",       minBankroll: 0,     buyIn: 100,  bots: 3, unlockLevel: 1,
     themeId: "garage-green",      cardBackId: "classic-doink",   chipSetId: "house-chips",
     rivals: ["Cody", "Isaac", "Graham", "Jerry"] },
-  { id: "backroom",   name: "Backroom Table",      subtitle: "Bigger pots. Meaner bots.",         minBankroll: 500,   buyIn: 250,  bots: 4, ante: 2,  unlockLevel: 4,
+  { id: "backroom",   name: "Backroom Table",      subtitle: "Bigger pots. Meaner bots.",         minBankroll: 500,   buyIn: 250,  bots: 4, unlockLevel: 4,
     themeId: "backroom-blue",     cardBackId: "black-label",     chipSetId: "backroom-matte",
     rivals: ["Cody", "Jerry", "Parker", "Emmanuel", "Rube"] },
-  { id: "riverboat",  name: "Riverboat Room",      subtitle: "The doinks start hurting.",         minBankroll: 1500,  buyIn: 500,  bots: 5, ante: 5,  unlockLevel: 9,
+  { id: "riverboat",  name: "Riverboat Room",      subtitle: "The doinks start hurting.",         minBankroll: 1500,  buyIn: 500,  bots: 5, unlockLevel: 9,
     themeId: "riverboat-red",     cardBackId: "riverboat-crest", chipSetId: "riverboat-brass",
     rivals: ["Michael", "Parker", "Landen", "Emmanuel", "Houston"] },
-  { id: "highroller", name: "High Stakes Room",     subtitle: "Big chip stakes. Brutal bots.",     minBankroll: 5000,  buyIn: 1000, bots: 6, ante: 10, unlockLevel: 16,
+  { id: "highroller", name: "High Stakes Room",     subtitle: "Big chip stakes. Brutal bots.",     minBankroll: 5000,  buyIn: 1000, bots: 6, unlockLevel: 16,
     themeId: "high-roller-black", cardBackId: "high-roller-gold",chipSetId: "high-roller-premium",
     rivals: ["Dalton", "Jayton", "Landen", "Houston", "Michael", "Rube"] },
-  { id: "mythic",     name: "Mythic Invitational", subtitle: "The biggest chip table. Elite bots.",           minBankroll: 15000, buyIn: 2500, bots: 6, ante: 25, unlockLevel: 25,
+  { id: "mythic",     name: "Mythic Invitational", subtitle: "The biggest chip table. Elite bots.",           minBankroll: 15000, buyIn: 2500, bots: 6, unlockLevel: 25,
     themeId: "mythic-purple",     cardBackId: "mythic-crown",    chipSetId: "mythic-gold",
     rivals: ["Dalton", "Jayton", "Landen", "Houston", "Michael", "Parker", "Emmanuel"] },
+  { id: "vault",      name: "The Vault",           subtitle: "The pinnacle. Only icons sit here.",           minBankroll: 40000, buyIn: 5000, bots: 6, unlockLevel: 35,
+    themeId: "vault-gold",        cardBackId: "vault-noir",      chipSetId: "vault-bullion",
+    rivals: ["Sterling", "Augustus", "Vance", "Crews", "Maximilian", "Dalton"] },
 ];
 
 const createDefaultCareer = (playerName = "Player") => ({
@@ -253,12 +261,24 @@ const claimDaily = career => {
 
 // XP curve: steep enough that levelling is a real grind, not a one-round thing.
 // xpForLevel(n) = cumulative XP required to BE at level n.
-// Per-level requirement: 150, 225, 300, 375, ... (first 150, step 75).
-// A typical round nets ~30-90 XP, so early levels take several full sessions.
+// Levels 1-10 keep the original ramp (first 150, step 75). After level 10 the
+// per-level cost is cut substantially and its growth flattened, so dedicated
+// players stop stalling in the teens. (L3 — the old curve kept charging
+// 900/975/1050... per level past 10, which was ~6 sessions each.)
 const xpForLevel = level => {
   if (level <= 1) return 0;
-  const n = level - 1;
-  return n * 150 + 75 * (n * (n - 1) / 2);
+  if (level <= 10) {
+    const n = level - 1;
+    return n * 150 + 75 * (n * (n - 1) / 2);
+  }
+  // Base = cumulative XP to reach level 10, then a cheaper flat-ish ramp.
+  const base = 9 * 150 + 75 * (9 * 8 / 2); // cumulative to reach level 10
+  // Per-level cost after 10: 500, 540, 580, 620 ... (start 500, step 40).
+  let total = base;
+  for (let lv = 10; lv < level; lv++) {
+    total += 500 + 40 * (lv - 10);
+  }
+  return total;
 };
 const getLevelFromXP = xp => {
   let lvl = 1;
@@ -276,6 +296,7 @@ const xpToNextLevel = xp => {
 // the tier name is purely a function of level, so it can never drift out of
 // sync with the player's actual progress.
 const rankForLevel = lvl => {
+  if (lvl >= 35) return "Icon";
   if (lvl >= 25) return "Legend";
   if (lvl >= 16) return "High Roller";
   if (lvl >= 9)  return "Sharp";
@@ -347,15 +368,16 @@ const applyCareerSession = (career, result) => {
 };
 
 // XP rules — used to compute earned XP from a session's tracked stats.
+// (L3 — bumped up so each session is meaningful progress, not a crawl.)
 const computeSessionXP = stats => {
   let xp = 0;
-  xp += (stats.roundsPlayed || 0) * 10;
-  xp += (stats.spreadWins || 0) * 25;
-  xp += (stats.doinkBetsHit || 0) * 40;
-  xp += (stats.mythicalHits || 0) * 75;
+  xp += (stats.roundsPlayed || 0) * 16;
+  xp += (stats.spreadWins || 0) * 40;
+  xp += (stats.doinkBetsHit || 0) * 60;
+  xp += (stats.mythicalHits || 0) * 110;
   xp += ((stats.handsBought || 0) + (stats.handsSold || 0)) * 15;
   const net = (stats.cashOut || 0) - (stats.buyIn || 0);
-  if (net > 0) xp += Math.floor(net / 25);
+  if (net > 0) xp += Math.floor(net / 20);
   return xp;
 };
 
@@ -412,6 +434,7 @@ const TABLE_THEMES = [
   { id: "riverboat-red",     name: "Riverboat Red",     unlockLevel: 9,  felt: "#5b1118", feltDark: "#25060a", rail: "#3b2414", accent: "#f0c96a" },
   { id: "high-roller-black", name: "Elite Black", unlockLevel: 16, felt: "#080808", feltDark: "#020202", rail: "#1f1f1f", accent: "#f0c96a" },
   { id: "mythic-purple",     name: "Mythic Purple",     unlockLevel: 25, felt: "#2d124a", feltDark: "#100719", rail: "#1a1028", accent: "#f0c96a" },
+  { id: "vault-gold",        name: "The Vault",         unlockLevel: 35, felt: "#181410", feltDark: "#0a0805", rail: "#2a2012", accent: "#f5d27a" },
 ];
 
 // ── Card backs ──────────────────────────────────────────────
@@ -427,6 +450,8 @@ const CARD_BACKS = [
     back: "linear-gradient(145deg,#1C1407,#070502)", border: "#F4D27A", motif: "#F0C96A" },
   { id: "mythic-crown",   name: "Mythic Crown",   unlockLevel: 25,
     back: "linear-gradient(145deg,#2D124A,#100719)", border: "#F4D27A", motif: "#C9A8E8" },
+  { id: "vault-noir",     name: "Vault Noir",     unlockLevel: 35,
+    back: "linear-gradient(145deg,#1C1710,#070502)", border: "#F5D27A", motif: "#F5D27A" },
 ];
 
 // ── Chip sets ───────────────────────────────────────────────
@@ -447,6 +472,9 @@ const CHIP_SETS = [
   { id: "mythic-gold",        name: "Mythic Gold",        unlockLevel: 25,
     swatch: ["#F0C96A", "#5B2A8C", "#1A1028"],
     colors: { 1:"#E8DCC0", 2:"#C9A8E8", 5:"#8C2A2A", 10:"#3A2A6A", 25:"#2A5A3A", 50:"#5B2A8C", 100:"#1A1028", 500:"#F0C96A" } },
+  { id: "vault-bullion",      name: "Vault Bullion",      unlockLevel: 35,
+    swatch: ["#F5D27A", "#1C1710", "#FFFFFF"],
+    colors: { 1:"#F5ECD2", 2:"#C9B58A", 5:"#8C6A1A", 10:"#2A2418", 25:"#4A3A1A", 50:"#6A4A14", 100:"#1C1710", 500:"#F5D27A" } },
 ];
 
 // ── Avatars ─────────────────────────────────────────────────
@@ -471,15 +499,16 @@ const QP_AVATARS = [
 const BOT_COUNT_OPTIONS  = [{ value:3, unlockLevel:1 }, { value:4, unlockLevel:4 }, { value:5, unlockLevel:9 }, { value:6, unlockLevel:16 }];
 const BUYIN_OPTIONS      = [{ value:100, unlockLevel:1 }, { value:250, unlockLevel:4 }, { value:500, unlockLevel:9 }, { value:1000, unlockLevel:16 }, { value:2500, unlockLevel:25 }];
 const ANTE_OPTIONS       = [{ value:1, unlockLevel:1 }, { value:2, unlockLevel:4 }, { value:5, unlockLevel:9 }, { value:10, unlockLevel:16 }, { value:25, unlockLevel:25 }];
-const REPLENISH_OPTIONS  = [{ value:100, unlockLevel:1 }, { value:250, unlockLevel:4 }, { value:500, unlockLevel:9 }, { value:1000, unlockLevel:16 }, { value:2500, unlockLevel:25 }];
+const REPLENISH_OPTIONS  = [{ value:35, unlockLevel:1 }, { value:85, unlockLevel:4 }, { value:175, unlockLevel:9 }, { value:350, unlockLevel:16 }, { value:850, unlockLevel:25 }];
 
 // ── Presets ─────────────────────────────────────────────────
 const QP_PRESETS = [
-  { id:"casual",     name:"Casual",      unlockLevel:1,  themeId:"garage-green",      chipId:"house-chips",         cardId:"classic-doink",   bots:3, buyIn:100,  ante:1,  replenish:100  },
-  { id:"backroom",   name:"Backroom",    unlockLevel:4,  themeId:"backroom-blue",     chipId:"backroom-matte",      cardId:"black-label",     bots:4, buyIn:250,  ante:2,  replenish:250  },
-  { id:"riverboat",  name:"Riverboat",   unlockLevel:9,  themeId:"riverboat-red",     chipId:"riverboat-brass",     cardId:"riverboat-crest", bots:5, buyIn:500,  ante:5,  replenish:500  },
-  { id:"highroller", name:"Elite", unlockLevel:16, themeId:"high-roller-black", chipId:"high-roller-premium", cardId:"high-roller-gold",bots:6, buyIn:1000, ante:10, replenish:1000 },
-  { id:"mythic",     name:"Mythic",      unlockLevel:25, themeId:"mythic-purple",     chipId:"mythic-gold",         cardId:"mythic-crown",    bots:7, buyIn:2500, ante:25, replenish:2500 },
+  { id:"casual",     name:"Casual",      unlockLevel:1,  themeId:"garage-green",      chipId:"house-chips",         cardId:"classic-doink",   bots:3, buyIn:100,  ante:2,   replenish:35  },
+  { id:"backroom",   name:"Backroom",    unlockLevel:4,  themeId:"backroom-blue",     chipId:"backroom-matte",      cardId:"black-label",     bots:4, buyIn:250,  ante:4,   replenish:85  },
+  { id:"riverboat",  name:"Riverboat",   unlockLevel:9,  themeId:"riverboat-red",     chipId:"riverboat-brass",     cardId:"riverboat-crest", bots:5, buyIn:500,  ante:10,  replenish:175  },
+  { id:"highroller", name:"Elite", unlockLevel:16, themeId:"high-roller-black", chipId:"high-roller-premium", cardId:"high-roller-gold",bots:6, buyIn:1000, ante:20,  replenish:350 },
+  { id:"mythic",     name:"Mythic",      unlockLevel:25, themeId:"mythic-purple",     chipId:"mythic-gold",         cardId:"mythic-crown",    bots:7, buyIn:2500, ante:50,  replenish:850 },
+  { id:"vault",      name:"The Vault",   unlockLevel:35, themeId:"vault-gold",        chipId:"vault-bullion",       cardId:"vault-noir",      bots:6, buyIn:5000, ante:100, replenish:1750 },
 ];
 
 // ── Unlock helpers — single source of truth ─────────────────
@@ -581,6 +610,12 @@ const BOT_RIM_PALETTES = [
   ["#6E7E74", "#3E4A43", "#181F1A"], // patina
   ["#80848A", "#4A4D52", "#1E2022"], // graphite
   ["#8C746A", "#56423A", "#261A16"], // copper
+  ["#9E8A4E", "#6A5A2A", "#2E2610"], // old gold
+  ["#7A6E86", "#463E52", "#1C1822"], // amethyst steel
+  ["#5E7E7A", "#364A47", "#141F1D"], // verdigris
+  ["#A07866", "#64463A", "#2C1C16"], // rose copper
+  ["#888C92", "#50545A", "#202226"], // silver ash
+  ["#94824E", "#5C4E2A", "#281F10"], // dark brass
 ];
 const HUMAN_RIM_PALETTE = ["#F6D98A", "#D4A843", "#7A580F"];
 
@@ -590,19 +625,45 @@ const INNER_TINTS = [
   ["#2C2824", "#100C0A"],
   ["#262A30", "#0A0C0F"],
   ["#2A2530", "#0E0A10"],
+  ["#23302A", "#0A100C"],
+  ["#302A23", "#100C08"],
+  ["#2A2326", "#0E0A0B"],
 ];
 
 // Marble palettes for the bust itself — [highlight, mid, shadow].
-const MARBLE_BOT = ["#E8E2D4", "#C2BAA6", "#8E8576"];
+// Several stone tones so busts differ in material, not just hairstyle.
+const MARBLE_BOTS = [
+  ["#E8E2D4", "#C2BAA6", "#8E8576"], // classic ivory
+  ["#E4DAC8", "#BCAE92", "#86775C"], // warm sandstone
+  ["#DEE0DE", "#B4B8B6", "#7E8482"], // cool grey marble
+  ["#E6DEDA", "#BEB0AA", "#8A7A72"], // rose alabaster
+  ["#DCE2DC", "#AEB8AC", "#788278"], // green-grey stone
+  ["#EAE4D0", "#C6BC9E", "#928670"], // aged limestone
+];
 const MARBLE_HUMAN = ["#F4E4B8", "#D9C188", "#A8895A"];
 
+// Stable hash from a string (character name) → non-negative int. Ensures a
+// given character always renders the same avatar, instead of a positional seed.
+const hashString = str => {
+  let h = 2166136261;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h | 0);
+};
+
 const getAvatarConfig = (seed = 0, name, isHuman = false) => {
-  const s = Math.abs(seed | 0);
+  // Prefer a stable hash of the NAME so each character keeps a consistent look
+  // across seats and sessions; fall back to the numeric seed if no name.
+  const h = name ? hashString(name) : Math.abs(seed | 0);
   return {
-    rim: isHuman ? HUMAN_RIM_PALETTE : BOT_RIM_PALETTES[s % BOT_RIM_PALETTES.length],
-    inner: INNER_TINTS[s % INNER_TINTS.length],
-    marble: isHuman ? MARBLE_HUMAN : MARBLE_BOT,
-    bustStyle: s % 6,           // 0-5, picks hair/laurel/beard variant
+    rim: isHuman ? HUMAN_RIM_PALETTE : BOT_RIM_PALETTES[h % BOT_RIM_PALETTES.length],
+    inner: INNER_TINTS[(h >> 3) % INNER_TINTS.length],
+    marble: isHuman ? MARBLE_HUMAN : MARBLE_BOTS[(h >> 5) % MARBLE_BOTS.length],
+    bustStyle: h % 6,                       // hair/laurel/beard variant
+    accessory: isHuman ? 0 : (h >> 7) % 5,  // 0 none, 1 monocle, 2 earring, 3 circlet, 4 face scar
     isHuman,
   };
 };
@@ -619,7 +680,7 @@ const initialsFromName = (name) => {
 
 // Render a refined Greek-bust portrait as inline SVG (React elements, not
 // dangerouslySetInnerHTML). viewBox is 0 0 100 100; the bust is centered.
-function GreekBust({ marble, style, gilded }) {
+function GreekBust({ marble, style, gilded, accessory = 0 }) {
   const [hi, mid, sh] = marble;
   // Derive extra tones for sculptural depth
   const deep = sh;                 // deepest shadow
@@ -763,6 +824,27 @@ function GreekBust({ marble, style, gilded }) {
       {beard}
       {hairFront}
 
+      {/* Accessories — small per-character details that add personality.
+          Drawn after the face so they sit on top. */}
+      {accessory === 1 && (  /* monocle over the shadow-side eye */
+        <g>
+          <circle cx="56.5" cy="42.5" r="5" fill="none" stroke="#E4C778" strokeWidth="1.4" opacity="0.95"/>
+          <line x1="56.5" y1="47.5" x2="58" y2="60" stroke="#E4C778" strokeWidth="0.8" opacity="0.7"/>
+        </g>
+      )}
+      {accessory === 2 && (  /* gold earring */
+        <circle cx="36" cy="55" r="2.1" fill="none" stroke="#F0C96A" strokeWidth="1.3"/>
+      )}
+      {accessory === 3 && (  /* slim circlet across the brow */
+        <g>
+          <path d="M32 33 Q50 27 68 33" fill="none" stroke="#E4C778" strokeWidth="2" strokeLinecap="round"/>
+          <circle cx="50" cy="29.5" r="1.8" fill="#F0C96A"/>
+        </g>
+      )}
+      {accessory === 4 && (  /* faint cheek scar */
+        <line x1="60" y1="40" x2="63" y2="50" stroke={deep} strokeWidth="1.1" opacity="0.5" strokeLinecap="round"/>
+      )}
+
       {/* Soft rim light along the lit edge of the head */}
       <path d="M50 18 Q34 19 31 38" fill="none" stroke={hi} strokeWidth="1.6" strokeLinecap="round" opacity="0.4"/>
 
@@ -832,8 +914,8 @@ const lbl = { fontSize:"0.7rem", letterSpacing:"0.12em", color:"rgba(212,168,67,
 // PERSONALITY COMMENTS
 // ─────────────────────────────────────────────────────────
 const COMMENTS = {
-  goodHand: ["Oh we are COOKING right now.", "Pack it up boys, I already won.", "This hand is illegal in 12 states.", "I would bet my house on this. And I like my house.", "I have never felt more alive.", "Someone call an ambulance. For the other players.", "This is the hand my mother dreamed about.", "I should be charging admission for this.", "The deck owes me money and just paid up."],
-  badHand: ["What in the actual—", "I have been personally attacked by this deck.", "My ancestors are ashamed.", "Do I even play this? Do I just leave?", "The audacity of these cards.", "This is a personal foul against me.", "The dealer hates me. Specifically me.", "I'd rather draw cards from the trash.", "These cards are an insult to playing cards.", "Did someone shuffle this with a blender?"],
+  goodHand: ["Oh we are COOKING right now.", "Pack it up boys, I already won.", "This hand is illegal in 12 states.", "I would bet my house on this. And I like my house.", "I have never felt more alive.", "Someone call an ambulance. For the other players.", "This is the hand my mother dreamed about.", "I should be charging admission for this.", "The deck owes me money and just paid up.", "I didn't choose the hand life. The hand life chose me.", "Gentlemen, it's been an honor. I'm about to ruin you.", "This is the one. I can feel it in my bones.", "Somebody is about to learn a very expensive lesson.", "I'd frame these cards if I weren't about to spend them.", "The math is mathing in my favor for once.", "Two cards, infinite confidence.", "I came here to make friends. That plan is canceled.", "This is borderline unfair to everyone else.", "Sweet, sweet cards. Come to papa.", "I'm not saying I'm blessed, but the deck clearly loves me.", "Lock the doors. Nobody leaves until I collect.", "These cards just paid off my imaginary mortgage.", "I'd like to thank the deck, my hands, and destiny.", "This is the kind of hand they write songs about.", "Hope everyone brought spare chips. You'll need them.", "I'm so calm right now it should scare you.", "The universe finally remembered I exist.", "Chef's kiss. Absolute chef's kiss."],
+  badHand: ["What in the actual—", "I have been personally attacked by this deck.", "My ancestors are ashamed.", "Do I even play this? Do I just leave?", "The audacity of these cards.", "This is a personal foul against me.", "The dealer hates me. Specifically me.", "I'd rather draw cards from the trash.", "These cards are an insult to playing cards.", "Did someone shuffle this with a blender?", "I've seen better hands on a clock.", "Is it too late to fold my entire existence?", "The deck and I are no longer on speaking terms.", "Whoever printed these cards owes me an apology.", "I would describe this hand as 'a cry for help.'", "Two cards. Both betrayals.", "This is what rock bottom looks like, apparently.", "I didn't know cards could be this disrespectful.", "Cool, cool. Love losing before I even bet.", "My horoscope warned me about today.", "I'm keeping these only to remember the pain.", "If garbage had a hand, this would be it.", "The deck is bullying me and I can't prove it.", "I've made peace with this catastrophe.", "Somewhere a math teacher is laughing at me.", "I'd complain to management but I am management.", "This hand has the energy of a flat tire.", "Truly, magnificently, historically bad."],
   doink: ["NOOOOOOO. NOOOOOOO. NOOOOOO.", "I need everyone to stop looking at me.", "I'm not crying. You're crying.", "Delete my account. Burn this table.", "I am going to walk directly into the ocean.", "This is fine. Everything is fine. It's NOT fine."],
   mythical: ["I AM A GOLDEN GOD.", "Tattoo this moment on my body.", "That just happened. THAT JUST HAPPENED.", "I would like to thank my parents for this hand.", "Mythical? More like INEVITABLE."],
   doinkBetHit: ["I called my shot. I called it!", "The doink prophet has arrived.", "I bet on chaos and chaos delivered.", "The audacity to not only doink but BET on it."],
@@ -1249,7 +1331,7 @@ function Avatar({ seed = 0, size = 36, active = false, name, isHuman = false }) 
         }}/>
         {/* The bust fills the lower portion of the disc */}
         <div style={{ width: "128%", height: "128%", marginBottom: "-12%" }}>
-          <GreekBust marble={cfg.marble} style={cfg.bustStyle} gilded={cfg.isHuman}/>
+          <GreekBust marble={cfg.marble} style={cfg.bustStyle} gilded={cfg.isHuman} accessory={cfg.accessory}/>
         </div>
       </div>
       {/* Top bevel highlight on the rim */}
@@ -1649,7 +1731,7 @@ function DoinkFullScreen({ name }) {
         color:"#fff", letterSpacing:"0.04em", lineHeight:1,
         textShadow:"0 0 30px rgba(231,76,60,1),0 0 80px rgba(231,76,60,0.9),0 8px 0 rgba(0,0,0,0.55)",
         animation:"doinkStamp .42s cubic-bezier(.34,1.56,.5,1) both",
-      }}>GAPPER</div>
+      }}>DOINK</div>
       <div style={{
         display:"flex", alignItems:"center", gap:8, marginTop:14,
         animation:"fadeUp .3s .18s both",
@@ -2230,6 +2312,8 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
   // the recap appears, rather than wherever the browser left it.
   const listRef = useRef(null);
   useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; }, []);
+  // L1 #6 — confirm before leaving the table.
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   return (
     <div role="dialog" aria-modal="true" aria-label={`Round ${round} recap`}
@@ -2332,7 +2416,7 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
                 <>
                   <button onClick={onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>Next Round →</button>
                   {mode === "career" && onCashOut && (
-                    <button onClick={onCashOut} style={{ ...sBtn, fontSize:"1.05rem", padding:"15px 24px", color:"#F0C96A", border:"1.5px solid rgba(212,168,67,0.6)" }}>
+                    <button onClick={() => setConfirmLeave(true)} style={{ ...sBtn, fontSize:"1.05rem", padding:"15px 24px", color:"#F0C96A", border:"1.5px solid rgba(212,168,67,0.6)" }}>
                       Leave Table (◆{cash})
                     </button>
                   )}
@@ -2342,6 +2426,20 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
           </div>
         </div>
       </div>
+
+      {/* L1 #6 — Leave Table confirmation */}
+      {confirmLeave && (
+        <div onClick={() => setConfirmLeave(false)} style={{ position:"fixed", inset:0, zIndex:300, background:"rgba(0,0,0,0.78)", backdropFilter:"blur(6px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:340, background:"linear-gradient(170deg,#0E1C12,#070D09)", border:"1.5px solid rgba(212,168,67,0.4)", borderRadius:18, padding:"22px 20px" }}>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#F0C96A", fontWeight:700, textAlign:"center", marginBottom:8 }}>Leave Table?</div>
+            <p style={{ fontSize:"0.88rem", color:"rgba(245,237,216,0.7)", lineHeight:1.55, textAlign:"center", margin:"0 0 18px" }}>
+              Are you sure you want to leave this table?
+            </p>
+            <button onClick={() => { setConfirmLeave(false); onCashOut(); }} style={{ ...gBtn, width:"100%", fontSize:"0.95rem", marginBottom:8 }}>Leave Table</button>
+            <button onClick={() => setConfirmLeave(false)} style={{ ...sBtn, width:"100%", fontSize:"0.9rem" }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2706,7 +2804,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     const up = resetRound(players).map(pl => { const pay = Math.min(anteAmt, pl.chips); p += pay; return { ...pl, chips: pl.chips - pay }; });
     setPlayers(up);
     setTimeout(() => { setPot(pv => pv + p); potRef.current += p; flashPot(p); }, 50);
-    addLog(`Round ${round} — replenish collected.`);
+    addLog(`Round ${round} — antes collected (◆${anteAmt} each).`);
     setQueueIdx(0);
     queueIdxRef.current = 0;
     setTimeout(() => setPhase("blindBet"), 500);
@@ -3353,8 +3451,10 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     setRound(r => r + 1);
     setPlayers(resetRound(alive));
     addLog(`Round ${round + 1} — ${alive[newFirst]?.name} goes first.`);
-    if (potRef.current === 0) setPhase("ante");
-    else setPhase("blindBet");
+    // L2: mandatory ante every hand. The ante phase always runs now (it used
+    // to be skipped when the pot already had chips). When the pot is empty it
+    // also serves as the reseed; either way every player antes before cards.
+    setPhase("ante");
   };
 
   // ── CAREER: build a session result and pass it up to App ──
@@ -3700,7 +3800,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   // launch chip flights from the correct seat coordinates.
   seatPosRef.current = seatPos;
   const banner =
-    phase==="ante" ? "Replenishing the pot…"
+    phase==="ante" ? "Collecting antes…"
     : phase==="blindBet" ? "Blind betting…"
     : phase==="dealing" ? "Dealing cards…"
     : phase==="preBuy" ? "Buy hands before bidding…"
@@ -4670,13 +4770,16 @@ function SettingsScreen({ career, isGuest, onBack, onResetCareer, onOpenLegal, o
 
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 0%,#122A18,#080F0A 70%)", fontFamily:"'DM Sans',sans-serif" }}>
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:`calc(env(safe-area-inset-top) + 18px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
-        {/* Sticky header */}
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:`0 22px calc(40px + env(safe-area-inset-bottom))` }}>
+        {/* Sticky header — sticks to the true top edge and carries the safe-area
+            inset itself, with its background filling that inset so there is no
+            gap above it on notched screens. */}
         <div style={{
-          position:"sticky", top:"env(safe-area-inset-top)", zIndex:20,
+          position:"sticky", top:0, zIndex:20,
           width:"100%", maxWidth:460, display:"flex", justifyContent:"space-between",
-          alignItems:"center", marginBottom:18, padding:"10px 0",
-          background:"linear-gradient(180deg,#0C1A10 0%,#0C1A10 75%,transparent 100%)",
+          alignItems:"center", marginBottom:18,
+          padding:"calc(env(safe-area-inset-top) + 12px) 0 12px",
+          background:"linear-gradient(180deg,#0C1A10 0%,#0C1A10 80%,transparent 100%)",
         }}>
           <button onClick={onBack} style={{ ...sBtn, padding:"8px 14px", fontSize:"0.85rem" }}>← Back</button>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", color:"#D4A843", fontWeight:700, letterSpacing:"0.04em" }}>Settings</div>
@@ -5129,7 +5232,7 @@ function CareerTableSelect({ career, onSelect, onBack }) {
                 </div>
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:10 }}>
                   <Pillstat label="Starting" value={`◆${t.buyIn}`}/>
-                  <Pillstat label="Ante" value={`◆${t.ante}`}/>
+                  <Pillstat label="Ante" value={`◆${computeAnte(t.buyIn)}`}/>
                   <Pillstat label="Bots" value={t.bots}/>
                 </div>
                 {playable
@@ -5528,7 +5631,10 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
       nH: 1,
       nB: table.bots,
       chips: table.buyIn,
-      ante: table.ante,
+      ante: computeAnte(table.buyIn),
+      // Replenish tops up an emptied pot. Kept well under the buy-in (~35%) so
+      // a replenish never busts everyone (the old bug: replenish > stack).
+      replenishAmount: Math.max(1, Math.round(table.buyIn * 0.35)),
       denoms: [1, 5, 10, 25, 50, 100, 500].filter(d => d <= table.buyIn),
       names: [career?.playerName || displayName || "Player"],
       botNames,
