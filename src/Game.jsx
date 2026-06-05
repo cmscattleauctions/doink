@@ -161,22 +161,22 @@ const CAREER_KEY = "doinkCareerV1";
 const computeAnte = buyIn => Math.max(1, Math.round((buyIn || 0) * 0.005));
 
 const CAREER_TABLES = [
-  { id: "garage",     name: "Garage Game",         subtitle: "Low stakes. Friendly chaos.",       minBankroll: 0,     buyIn: 100,  bots: 3, unlockLevel: 1,
+  { id: "garage",     name: "Garage Game",         subtitle: "Low stakes. Friendly chaos.",       minBankroll: 0,     buyIn: 100,  bots: 3, ante: 1,  replenish: 1,  unlockLevel: 1,
     themeId: "garage-green",      cardBackId: "classic-doink",   chipSetId: "house-chips",
     rivals: ["Cody", "Isaac", "Graham", "Jerry"] },
-  { id: "backroom",   name: "Backroom Table",      subtitle: "Bigger pots. Meaner bots.",         minBankroll: 500,   buyIn: 250,  bots: 4, unlockLevel: 4,
+  { id: "backroom",   name: "Backroom Table",      subtitle: "Bigger pots. Meaner bots.",         minBankroll: 500,   buyIn: 250,  bots: 4, ante: 1,  replenish: 2,  unlockLevel: 4,
     themeId: "backroom-blue",     cardBackId: "black-label",     chipSetId: "backroom-matte",
     rivals: ["Cody", "Jerry", "Parker", "Emmanuel", "Rube"] },
-  { id: "riverboat",  name: "Riverboat Room",      subtitle: "The doinks start hurting.",         minBankroll: 1500,  buyIn: 500,  bots: 5, unlockLevel: 9,
+  { id: "riverboat",  name: "Riverboat Room",      subtitle: "The doinks start hurting.",         minBankroll: 1500,  buyIn: 500,  bots: 5, ante: 3,  replenish: 3,  unlockLevel: 9,
     themeId: "riverboat-red",     cardBackId: "riverboat-crest", chipSetId: "riverboat-brass",
     rivals: ["Michael", "Parker", "Landen", "Emmanuel", "Houston"] },
-  { id: "highroller", name: "High Stakes Room",     subtitle: "Big chip stakes. Brutal bots.",     minBankroll: 5000,  buyIn: 1000, bots: 6, unlockLevel: 16,
+  { id: "highroller", name: "High Stakes Room",     subtitle: "Big chip stakes. Brutal bots.",     minBankroll: 5000,  buyIn: 1000, bots: 6, ante: 5,  replenish: 10, unlockLevel: 16,
     themeId: "high-roller-black", cardBackId: "high-roller-gold",chipSetId: "high-roller-premium",
     rivals: ["Dalton", "Jayton", "Landen", "Houston", "Michael", "Rube"] },
-  { id: "mythic",     name: "Mythic Invitational", subtitle: "The biggest chip table. Elite bots.",           minBankroll: 15000, buyIn: 2500, bots: 6, unlockLevel: 25,
+  { id: "mythic",     name: "Mythic Invitational", subtitle: "The biggest chip table. Elite bots.",           minBankroll: 15000, buyIn: 2500, bots: 6, ante: 10, replenish: 20, unlockLevel: 25,
     themeId: "mythic-purple",     cardBackId: "mythic-crown",    chipSetId: "mythic-gold",
     rivals: ["Dalton", "Jayton", "Landen", "Houston", "Michael", "Parker", "Emmanuel"] },
-  { id: "vault",      name: "The Vault",           subtitle: "The pinnacle. Only icons sit here.",           minBankroll: 40000, buyIn: 5000, bots: 6, unlockLevel: 35,
+  { id: "vault",      name: "The Vault",           subtitle: "The pinnacle. Only icons sit here.",           minBankroll: 40000, buyIn: 5000, bots: 6, ante: 25, replenish: 35, unlockLevel: 35,
     themeId: "vault-gold",        cardBackId: "vault-noir",      chipSetId: "vault-bullion",
     rivals: ["Sterling", "Augustus", "Vance", "Crews", "Maximilian", "Dalton"] },
 ];
@@ -503,12 +503,12 @@ const REPLENISH_OPTIONS  = [{ value:35, unlockLevel:1 }, { value:85, unlockLevel
 
 // ── Presets ─────────────────────────────────────────────────
 const QP_PRESETS = [
-  { id:"casual",     name:"Casual",      unlockLevel:1,  themeId:"garage-green",      chipId:"house-chips",         cardId:"classic-doink",   bots:3, buyIn:100,  ante:2,   replenish:35  },
-  { id:"backroom",   name:"Backroom",    unlockLevel:4,  themeId:"backroom-blue",     chipId:"backroom-matte",      cardId:"black-label",     bots:4, buyIn:250,  ante:4,   replenish:85  },
-  { id:"riverboat",  name:"Riverboat",   unlockLevel:9,  themeId:"riverboat-red",     chipId:"riverboat-brass",     cardId:"riverboat-crest", bots:5, buyIn:500,  ante:10,  replenish:175  },
-  { id:"highroller", name:"Elite", unlockLevel:16, themeId:"high-roller-black", chipId:"high-roller-premium", cardId:"high-roller-gold",bots:6, buyIn:1000, ante:20,  replenish:350 },
-  { id:"mythic",     name:"Mythic",      unlockLevel:25, themeId:"mythic-purple",     chipId:"mythic-gold",         cardId:"mythic-crown",    bots:7, buyIn:2500, ante:50,  replenish:850 },
-  { id:"vault",      name:"The Vault",   unlockLevel:35, themeId:"vault-gold",        chipId:"vault-bullion",       cardId:"vault-noir",      bots:6, buyIn:5000, ante:100, replenish:1750 },
+  { id:"casual",     name:"Casual",      unlockLevel:1,  themeId:"garage-green",      chipId:"house-chips",         cardId:"classic-doink",   bots:3, buyIn:100,  ante:1,   replenish:1  },
+  { id:"backroom",   name:"Backroom",    unlockLevel:4,  themeId:"backroom-blue",     chipId:"backroom-matte",      cardId:"black-label",     bots:4, buyIn:250,  ante:1,   replenish:2  },
+  { id:"riverboat",  name:"Riverboat",   unlockLevel:9,  themeId:"riverboat-red",     chipId:"riverboat-brass",     cardId:"riverboat-crest", bots:5, buyIn:500,  ante:3,   replenish:3  },
+  { id:"highroller", name:"Elite", unlockLevel:16, themeId:"high-roller-black", chipId:"high-roller-premium", cardId:"high-roller-gold",bots:6, buyIn:1000, ante:5,   replenish:10 },
+  { id:"mythic",     name:"Mythic",      unlockLevel:25, themeId:"mythic-purple",     chipId:"mythic-gold",         cardId:"mythic-crown",    bots:7, buyIn:2500, ante:10,  replenish:20 },
+  { id:"vault",      name:"The Vault",   unlockLevel:35, themeId:"vault-gold",        chipId:"vault-bullion",       cardId:"vault-noir",      bots:6, buyIn:5000, ante:25,  replenish:35 },
 ];
 
 // ── Unlock helpers — single source of truth ─────────────────
@@ -2801,7 +2801,18 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
     setPrevChips(snap);
 
     let p = 0;
-    const up = resetRound(players).map(pl => { const pay = Math.min(anteAmt, pl.chips); p += pay; return { ...pl, chips: pl.chips - pay }; });
+    const up = resetRound(players).map(pl => {
+      // Every player antes. If a player can't cover the full ante, they pay
+      // whatever they have left into the pot and are eliminated (chips → 0).
+      // The round-start alive-check then removes any 0-chip player.
+      if (pl.chips < anteAmt) {
+        p += pl.chips;
+        if (pl.chips > 0) addLog(`${pl.name} can't cover the ante — pays ◆${pl.chips} and is out.`);
+        return { ...pl, chips: 0 };
+      }
+      p += anteAmt;
+      return { ...pl, chips: pl.chips - anteAmt };
+    });
     setPlayers(up);
     setTimeout(() => { setPot(pv => pv + p); potRef.current += p; flashPot(p); }, 50);
     addLog(`Round ${round} — antes collected (◆${anteAmt} each).`);
@@ -4351,8 +4362,6 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
           {showSecondary && (
             <div className="fade-up" style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap", marginTop:4 }}>
               {!curSlot?.isBought&&<button onClick={()=>{setShowSecondary(false);setSheet("insurance");}} disabled={cantBet} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px", opacity:cantBet?0.4:1 }}> Insurance</button>}
-              <button onClick={()=>{setShowSecondary(false);setTradeMode("buy");setSheet("trade");}} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px" }}> Buy Hand</button>
-              <button onClick={()=>{setShowSecondary(false);setTradeMode("sell");setSheet("trade");}} style={{ ...sBtn, fontSize:"0.82rem", padding:"8px 14px" }}> Sell Hand</button>
             </div>
           )}
         </div>
@@ -5232,7 +5241,7 @@ function CareerTableSelect({ career, onSelect, onBack }) {
                 </div>
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:10 }}>
                   <Pillstat label="Starting" value={`◆${t.buyIn}`}/>
-                  <Pillstat label="Ante" value={`◆${computeAnte(t.buyIn)}`}/>
+                  <Pillstat label="Ante" value={`◆${t.ante}`}/>
                   <Pillstat label="Bots" value={t.bots}/>
                 </div>
                 {playable
@@ -5631,10 +5640,8 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
       nH: 1,
       nB: table.bots,
       chips: table.buyIn,
-      ante: computeAnte(table.buyIn),
-      // Replenish tops up an emptied pot. Kept well under the buy-in (~35%) so
-      // a replenish never busts everyone (the old bug: replenish > stack).
-      replenishAmount: Math.max(1, Math.round(table.buyIn * 0.35)),
+      ante: table.ante,
+      replenishAmount: table.replenish,
       denoms: [1, 5, 10, 25, 50, 100, 500].filter(d => d <= table.buyIn),
       names: [career?.playerName || displayName || "Player"],
       botNames,
