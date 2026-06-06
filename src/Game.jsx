@@ -2009,7 +2009,7 @@ function TableDrawers({ openDrawer, setOpenDrawer, log, marketContent }) {
           trading is temporarily disabled. The market drawer code below is
           left dormant (openDrawer can no longer become "market") so the
           feature can be restored later without a rebuild. */}
-      <div style={{ flexShrink:0, display:"flex", justifyContent:"center", alignItems:"center", padding:"6px 14px 8px", zIndex:30 }}>
+      <div style={{ flexShrink:0, display:"flex", justifyContent:"center", alignItems:"center", padding:"6px 14px calc(8px + env(safe-area-inset-bottom))", zIndex:30 }}>
         <button onClick={() => setOpenDrawer("log")} style={drawerTabStyle}>
           <span style={{ fontSize:"0.62rem", letterSpacing:"0.12em" }}>▤ LOG</span>
         </button>
@@ -5164,21 +5164,22 @@ function AvatarPicker({ career, onSelect, onClose }) {
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#F0C96A", fontWeight:700, textAlign:"center", marginBottom:4 }}>Choose Your Avatar</div>
           <p style={{ fontSize:"0.78rem", color:"rgba(245,237,216,0.55)", textAlign:"center", margin:0 }}>Unlock a new character every 2 levels.</p>
         </div>
-        {/* Scrollable grid */}
-        <div className="ios-scroll" style={{ flex:"1 1 auto", overflowY:"auto", padding:"4px 18px 18px", background:"#0C1A10", minHeight:0 }}>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
+        {/* Scrollable grid — plain overflow (NOT the .ios-scroll class, which
+            is position:fixed and would blow the panel out to full screen). */}
+        <div style={{ flex:"1 1 auto", overflowY:"auto", WebkitOverflowScrolling:"touch", padding:"6px 16px 18px", background:"#0C1A10", minHeight:0 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16 }}>
             {items.map(it => (
               <button key={it.name} onClick={() => { if (it.have) { haptic("button"); onSelect(it.name); } }} disabled={!it.have}
-                style={{ background:"none", border:"none", padding:0, cursor: it.have?"pointer":"default", display:"flex", flexDirection:"column", alignItems:"center", gap:5, opacity: it.have?1:0.4 }}>
+                style={{ background:"none", border:"none", padding:0, cursor: it.have?"pointer":"default", display:"flex", flexDirection:"column", alignItems:"center", gap:6, opacity: it.have?1:0.4 }}>
                 <div style={{ position:"relative", filter: it.have?"none":"grayscale(1)" }}>
-                  <Avatar seed={0} size={70} name={it.name} imageName={it.name} active={career.selectedAvatar===it.name}/>
+                  <Avatar seed={0} size={92} name={it.name} imageName={it.name} active={career.selectedAvatar===it.name}/>
                   {!it.have && (
                     <div style={{ position:"absolute", inset:0, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.55)" }}>
-                      <span style={{ fontSize:"0.62rem", color:"#F0C96A", fontWeight:700, textAlign:"center", lineHeight:1.1 }}>Lvl {it.unlockLevel}</span>
+                      <span style={{ fontSize:"0.72rem", color:"#F0C96A", fontWeight:700, textAlign:"center", lineHeight:1.1 }}>Lvl {it.unlockLevel}</span>
                     </div>
                   )}
                 </div>
-                <span style={{ fontSize:"0.7rem", color: it.have?"rgba(245,237,216,0.8)":"rgba(245,237,216,0.4)", fontWeight:600 }}>{it.name}</span>
+                <span style={{ fontSize:"0.74rem", color: it.have?"rgba(245,237,216,0.8)":"rgba(245,237,216,0.4)", fontWeight:600 }}>{it.name}</span>
               </button>
             ))}
           </div>
