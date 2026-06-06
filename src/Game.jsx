@@ -641,6 +641,15 @@ const chipColorFor = d => {
   return DEFAULT_CHIP_COLORS[d] || "#888";
 };
 
+// Pick readable text for a chip face: dark text on light chips, white on dark.
+const chipTextColor = d => {
+  const hex = String(chipColorFor(d)).replace("#", "");
+  if (hex.length < 6) return "#fff";
+  const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? "#1A1A1A" : "#fff";
+};
+
 
 // ─────────────────────────────────────────────────────────
 // AVATAR MEDALLIONS — premium Greek-bust portraits in metal frames
@@ -1429,7 +1438,7 @@ function ChipSelector({ denoms, max, value, onChange }) {
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, maxWidth:340, margin:"0 auto" }}>
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", justifyContent:"center" }}>
         {denoms.filter(d => d <= max).map(d => (
-          <button key={d} onClick={() => onChange(Math.min(value + d, max))} style={{ width:52, height:52, borderRadius:"50%", border:"2.5px solid rgba(255,255,255,0.3)", background:chipColorFor(d), color:"#fff", fontWeight:700, fontSize:"0.75rem", boxShadow:"0 4px 12px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.2)" }}>+{d}</button>
+          <button key={d} onClick={() => onChange(Math.min(value + d, max))} style={{ width:52, height:52, borderRadius:"50%", border:"2.5px solid rgba(255,255,255,0.3)", background:chipColorFor(d), color: chipTextColor(d), fontWeight:800, fontSize:"0.75rem", textShadow: chipTextColor(d)==="#1A1A1A" ? "0 1px 1px rgba(255,255,255,0.4)" : "0 1px 2px rgba(0,0,0,0.6)", boxShadow:"0 4px 12px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.2)" }}>+{d}</button>
         ))}
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:16, background:"rgba(0,0,0,0.3)", borderRadius:16, padding:"10px 20px", border:"1px solid rgba(255,255,255,0.08)" }}>
@@ -2352,7 +2361,7 @@ function SettingRow({ label, options, value, lvl, fmt, onPick }) {
 // ─────────────────────────────────────────────────────────
 // ROUND SUMMARY — full-screen modal recap of THIS round only
 // ─────────────────────────────────────────────────────────
-function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, onCashOut, humanPlayerId }) {
+function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, onCashOut, humanPlayerId, selectedAvatar }) {
   const turns = history || [];
 
   // Group turns by player name. Pass entries get no bet type. The history is
@@ -2426,7 +2435,7 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
               {/* Top row: avatar + name on left, net delta + final chips on right */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
-                  <Avatar seed={p.avatarSeed} size={26} name={p.name} isHuman={!p.isBot}/>
+                  <Avatar seed={p.avatarSeed} size={26} name={p.name} isHuman={!p.isBot} imageName={p.isBot ? p.name : selectedAvatar}/>
                   <div style={{ fontSize:"0.9rem", color:"#F5EDD8", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.name}</div>
                 </div>
                 <div style={{ display:"flex", alignItems:"baseline", gap:10, flexShrink:0 }}>
@@ -2490,7 +2499,7 @@ function RoundSummary({ players, prevChips, pot, round, history, onNext, mode, o
               }
               return (
                 <>
-                  <button onClick={onNext} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>Next Round →</button>
+                  <button onClick={() => { haptic("button"); onNext(); }} style={{ ...gBtn, fontSize:"1.05rem", padding:"15px 36px" }}>Next Round →</button>
                   {mode === "career" && onCashOut && (
                     <button onClick={() => setConfirmLeave(true)} style={{ ...sBtn, fontSize:"1.05rem", padding:"15px 24px", color:"#F0C96A", border:"1.5px solid rgba(212,168,67,0.6)" }}>
                       Leave Table (◆{cash})
@@ -3803,6 +3812,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   };
   const humanPass = () => {
     if (locked || !curSlot || !curPlayer) return;
+    haptic("button");
     // Passing also withdraws any open sell offer.
     withdrawSellOffer();
     execPass(curSlot, curPlayer); setSheet(null);
@@ -4138,7 +4148,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
           const isActiveSlot = curSlot && curSlot.playerId === p.id;
           const slotAnim = seatAnims[p.id] || null;
           const outerClass = slotAnim==="win"?"win-blast":slotAnim==="doink"?"doink-explosion big-shake":slotAnim==="miss"?"miss-flash":"";
-          const sz = landscape ? 48 : 58;
+          const sz = landscape ? 62 : 75;
           const isInactiveAndPlaying = !isActiveSlot && (phase === "betting" || phase === "blindBet");
           const botCardScale = players.length <= 4 ? 0.92
                           : players.length === 5 ? 0.82
@@ -4508,6 +4518,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
           mode={cfg.mode}
           onCashOut={isCareer ? (() => finishCareerSession("cashout")) : undefined}
           humanPlayerId={players.find(p => !p.isBot)?.id}
+          selectedAvatar={selectedAvatar}
         />
       )}
 
@@ -5146,27 +5157,36 @@ function AvatarPicker({ career, onSelect, onClose }) {
     have: unlocked.has(nm),
   }));
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:400, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(6px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div onClick={e => e.stopPropagation()} className="ios-scroll" style={{ width:"100%", maxWidth:420, maxHeight:"80vh", overflowY:"auto", background:"linear-gradient(170deg,#0E1C12,#070D09)", border:"1.5px solid rgba(212,168,67,0.4)", borderRadius:18, padding:"20px 18px" }}>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#F0C96A", fontWeight:700, textAlign:"center", marginBottom:4 }}>Choose Your Avatar</div>
-        <p style={{ fontSize:"0.78rem", color:"rgba(245,237,216,0.55)", textAlign:"center", margin:"0 0 16px" }}>Unlock a new character every 2 levels.</p>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
-          {items.map(it => (
-            <button key={it.name} onClick={() => it.have && onSelect(it.name)} disabled={!it.have}
-              style={{ background:"none", border:"none", padding:0, cursor: it.have?"pointer":"default", display:"flex", flexDirection:"column", alignItems:"center", gap:5, opacity: it.have?1:0.4 }}>
-              <div style={{ position:"relative", filter: it.have?"none":"grayscale(1)" }}>
-                <Avatar seed={0} size={70} name={it.name} imageName={it.name} active={career.selectedAvatar===it.name}/>
-                {!it.have && (
-                  <div style={{ position:"absolute", inset:0, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)" }}>
-                    <span style={{ fontSize:"0.62rem", color:"#F0C96A", fontWeight:700, textAlign:"center", lineHeight:1.1 }}>Lvl {it.unlockLevel}</span>
-                  </div>
-                )}
-              </div>
-              <span style={{ fontSize:"0.7rem", color: it.have?"rgba(245,237,216,0.8)":"rgba(245,237,216,0.4)", fontWeight:600 }}>{it.name}</span>
-            </button>
-          ))}
+    <div onClick={onClose} style={{ position:"fixed", top:0, left:0, right:0, bottom:0, zIndex:400, background:"rgba(0,0,0,0.92)", display:"flex", alignItems:"center", justifyContent:"center", padding:"calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px)", boxSizing:"border-box" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:420, height:"100%", display:"flex", flexDirection:"column", background:"#0C1A10", border:"1.5px solid rgba(212,168,67,0.4)", borderRadius:18, overflow:"hidden", boxSizing:"border-box" }}>
+        {/* Fixed header */}
+        <div style={{ padding:"20px 18px 12px", flexShrink:0, background:"#0C1A10" }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#F0C96A", fontWeight:700, textAlign:"center", marginBottom:4 }}>Choose Your Avatar</div>
+          <p style={{ fontSize:"0.78rem", color:"rgba(245,237,216,0.55)", textAlign:"center", margin:0 }}>Unlock a new character every 2 levels.</p>
         </div>
-        <button onClick={onClose} style={{ ...sBtn, width:"100%", marginTop:18, fontSize:"0.9rem" }}>Done</button>
+        {/* Scrollable grid */}
+        <div className="ios-scroll" style={{ flex:"1 1 auto", overflowY:"auto", padding:"4px 18px 18px", background:"#0C1A10", minHeight:0 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
+            {items.map(it => (
+              <button key={it.name} onClick={() => { if (it.have) { haptic("button"); onSelect(it.name); } }} disabled={!it.have}
+                style={{ background:"none", border:"none", padding:0, cursor: it.have?"pointer":"default", display:"flex", flexDirection:"column", alignItems:"center", gap:5, opacity: it.have?1:0.4 }}>
+                <div style={{ position:"relative", filter: it.have?"none":"grayscale(1)" }}>
+                  <Avatar seed={0} size={70} name={it.name} imageName={it.name} active={career.selectedAvatar===it.name}/>
+                  {!it.have && (
+                    <div style={{ position:"absolute", inset:0, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.55)" }}>
+                      <span style={{ fontSize:"0.62rem", color:"#F0C96A", fontWeight:700, textAlign:"center", lineHeight:1.1 }}>Lvl {it.unlockLevel}</span>
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize:"0.7rem", color: it.have?"rgba(245,237,216,0.8)":"rgba(245,237,216,0.4)", fontWeight:600 }}>{it.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Pinned Done button */}
+        <div style={{ flexShrink:0, padding:"12px 18px 16px", borderTop:"1px solid rgba(255,255,255,0.08)", background:"#0A130D" }}>
+          <button onClick={onClose} style={{ ...sBtn, width:"100%", fontSize:"0.95rem" }}>Done</button>
+        </div>
       </div>
     </div>
   );
@@ -5278,7 +5298,7 @@ function CareerHome({ career, onPlay, onClaimDaily, onBack, onLeaderboard, onSet
               </div>
             </div>
             {dailyEligible && (
-              <button onClick={onClaimDaily} style={{ ...gBtn, padding:"12px 18px", fontSize:"0.85rem", flexShrink:0, background:"linear-gradient(160deg,#0E4A1E 0%,#27AE60 60%,#1A8A3A 100%)", color:"#FFF", boxShadow:"0 6px 22px rgba(39,174,96,0.42)" }}>Claim ◆{dailyAmount}</button>
+              <button onClick={() => { haptic("win"); onClaimDaily(); }} style={{ ...gBtn, padding:"12px 18px", fontSize:"0.85rem", flexShrink:0, background:"linear-gradient(160deg,#0E4A1E 0%,#27AE60 60%,#1A8A3A 100%)", color:"#FFF", boxShadow:"0 6px 22px rgba(39,174,96,0.42)" }}>Claim ◆{dailyAmount}</button>
             )}
           </div>
         </div>
@@ -5413,6 +5433,13 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, oldLevel, newL
   const newlyUnlockedTables = leveledUp
     ? CAREER_TABLES.filter(t => t.unlockLevel > oldLevel && t.unlockLevel <= newLevel)
     : [];
+  // A little tactile punctuation when the summary appears: level-up celebrates,
+  // a winning session gives a success tap, a bust gives a soft warning.
+  useEffect(() => {
+    if (leveledUp) haptic("levelup");
+    else if (won) haptic("win");
+    else if (busted) haptic("lose");
+  }, []);
   return (
     <div className="ios-scroll" style={{ background:"radial-gradient(ellipse at 50% 30%,#122A18,#080F0A 70%)" }}>
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:`calc(env(safe-area-inset-top) + 20px) 22px calc(40px + env(safe-area-inset-bottom))` }}>
