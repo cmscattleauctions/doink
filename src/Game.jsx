@@ -121,7 +121,34 @@ const isMythical = (a, b) => spreadOf(a, b) === 2;
 // Each bot has a fixed personality keyed by name. Multipliers stack onto BOT_CONFIG.
 // confidence: how high they bet on good hands. doink: appetite for the 7:1. sell: how often they sell weak hands.
 // blind: appetite for blind bets. risk: passes vs goes for it on marginal hands.
-const BOT_NAMES = ["Payne", "Jayton", "Michael", "Emmanuel", "Parker", "Landen", "Isaac", "Jake", "Will", "Dalton", "Cody", "Jerry", "Rube", "Graham", "Houston"];
+// Master character cast — every bot is drawn from this pool at random, at any
+// table (no fixed per-table rosters). Names map to /avatars/<name>.png images.
+const CHARACTER_CAST = [
+  "Cody", "Isaac", "Graham", "Jerry", "Parker", "Emmanuel", "Rube", "Michael",
+  "Landen", "Houston", "Dalton", "Jayton", "Sterling", "Augustus", "Vance",
+  "Crews", "Maximilian", "Bryson", "Desmond", "Jin",
+  "Vivian", "Renata", "Mei", "Gloria", "Kori", "Simone",
+];
+const BOT_NAMES = CHARACTER_CAST;
+
+// ─────────────────────────────────────────────────────────
+// PLAYER AVATAR UNLOCKS
+// The player unlocks one playable character every 2 levels (levels 2,4,6…).
+// AVATAR_UNLOCK_ORDER fixes WHICH character unlocks at each step so it's
+// deterministic (and so existing careers can be granted retroactively by
+// level). Cosmetic only.
+// ─────────────────────────────────────────────────────────
+const AVATAR_UNLOCK_ORDER = [
+  "Cody", "Vivian", "Parker", "Dalton", "Mei", "Houston", "Renata", "Michael",
+  "Sterling", "Kori", "Jayton", "Gloria", "Vance", "Simone", "Augustus", "Jin",
+  "Crews", "Bryson", "Desmond", "Emmanuel", "Maximilian", "Isaac", "Graham",
+  "Landen", "Rube", "Jerry",
+];
+// How many avatars are unlocked at a given level: one at level 1 (a starter),
+// then one more every 2 levels (lvl 2 → 2 unlocked, lvl 4 → 3, …).
+const avatarsUnlockedCount = level => Math.min(AVATAR_UNLOCK_ORDER.length, 1 + Math.floor(Math.max(1, level) / 2));
+const unlockedAvatarsForLevel = level => AVATAR_UNLOCK_ORDER.slice(0, avatarsUnlockedCount(level));
+
 
 const DEFAULT_PERSONALITY = { confidence: 1, doink: 1, sell: 1, blind: 1, risk: 1, label: "Steady" };
 const BOT_PERSONALITIES = {
@@ -214,6 +241,10 @@ const createDefaultCareer = (playerName = "Player") => ({
   // Quick Play unlock milestones (4/9/16/25) the player has already been
   // shown the reward popup for. Prevents the popup repeating.
   shownUnlocks: [],
+  // Player avatar: which character portraits they've unlocked, and which one
+  // is currently selected (shown as their seat + on Career Home).
+  unlockedAvatars: ["Cody"],
+  selectedAvatar: "Cody",
 });
 
 // Merge any stored career object with current defaults so older saves stay
@@ -230,6 +261,19 @@ const normalizeCareer = (stored, playerName) => {
   // An existing career means the player is already past onboarding — don't
   // send returning players back through the username picker / tutorial.
   if (stored.usernameSet === undefined) merged.usernameSet = true;
+  // Avatar unlocks: grant everything the player's current level entitles them
+  // to (covers existing careers that predate the avatar system). Merge with
+  // any already-stored unlocks so nothing is lost. Pick a selected avatar if
+  // none is set yet (random from what they have unlocked).
+  {
+    const byLevel = unlockedAvatarsForLevel(merged.level || 1);
+    const set = new Set([...(Array.isArray(stored.unlockedAvatars) ? stored.unlockedAvatars : []), ...byLevel]);
+    merged.unlockedAvatars = [...set];
+    if (!merged.selectedAvatar || !merged.unlockedAvatars.includes(merged.selectedAvatar)) {
+      const pool = merged.unlockedAvatars;
+      merged.selectedAvatar = pool[Math.floor(Math.random() * pool.length)] || "Cody";
+    }
+  }
   if (stored.tutorialSeen === undefined) merged.tutorialSeen = true;
   return merged;
 };
@@ -341,16 +385,29 @@ function readLiveSession() {
 // applyCareerSession: pure function that merges a finished session into a career.
 const applyCareerSession = (career, result) => {
   const oldBankroll = career.bankroll;
-  const newBankroll = Math.max(0, oldBankroll + result.cashOut); // buyIn already deducted up front
   const xpEarned = result.xpEarned || 0;
   const newXP = career.xp + xpEarned;
+  const oldLevel = career.level || 1;
   const newLevel = getLevelFromXP(newXP);
   const wasWin = result.net > 0;
+
+  // ── Level-up rewards ──
+  // Coin bonus: for each NEW level crossed, pay (that level × 30) into the
+  // bankroll. Crossing several levels at once pays each one.
+  let levelBonus = 0;
+  for (let lv = oldLevel + 1; lv <= newLevel; lv++) levelBonus += lv * 30;
+  // Avatar unlocks: grant any characters the new level entitles them to.
+  const unlockedNow = unlockedAvatarsForLevel(newLevel);
+  const mergedAvatars = [...new Set([...(career.unlockedAvatars || []), ...unlockedNow])];
+
+  const newBankroll = Math.max(0, oldBankroll + result.cashOut + levelBonus); // buyIn already deducted up front
   return {
     ...career,
     bankroll: newBankroll,
     xp: newXP,
     level: newLevel,
+    unlockedAvatars: mergedAvatars,
+    selectedAvatar: career.selectedAvatar && mergedAvatars.includes(career.selectedAvatar) ? career.selectedAvatar : (mergedAvatars[0] || "Cody"),
     totalRoundsPlayed: career.totalRoundsPlayed + (result.roundsPlayed || 0),
     totalHandsPlayed: career.totalHandsPlayed + (result.roundsPlayed || 0),
     totalCareerProfit: career.totalCareerProfit + result.net,
@@ -400,21 +457,14 @@ const tableIsPlayable = (table, career) => {
 
 // Pick career bot names for a table: prefer rival list, fall back if too few.
 const pickCareerRivals = (table) => {
-  const pool = [...(table.rivals || [])];
-  // shuffle
+  // Random everywhere: draw the table's bots from the entire character cast,
+  // freshly shuffled each session, so you never face the same fixed lineup.
+  const pool = [...CHARACTER_CAST];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = 0 | Math.random() * (i + 1);
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  if (pool.length >= table.bots) return pool.slice(0, table.bots);
-  // Top up from rest of BOT_NAMES if rivals list is short
-  const used = new Set(pool);
-  const extra = BOT_NAMES.filter(n => !used.has(n));
-  for (let i = extra.length - 1; i > 0; i--) {
-    const j = 0 | Math.random() * (i + 1);
-    [extra[i], extra[j]] = [extra[j], extra[i]];
-  }
-  return [...pool, ...extra].slice(0, table.bots);
+  return pool.slice(0, table.bots);
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -1295,8 +1345,23 @@ function PotDisplay({ pot, potAnim, delta, landscape }) {
 // ─────────────────────────────────────────────────────────
 // AVATAR — premium player medallion
 // ─────────────────────────────────────────────────────────
-function Avatar({ seed = 0, size = 36, active = false, name, isHuman = false }) {
+// Character images are uploaded to /public/avatars/ — render painted portraits
+// inside the metal rim. A missing image auto-falls back to the SVG bust.
+const USE_CHARACTER_IMAGES = true;
+// Lowercased character name → image path. Any name in the cast resolves to
+// /avatars/<name>.png. Returns null for the human's default / unknown names.
+const avatarImageFor = name => {
+  if (!name) return null;
+  const key = String(name).trim().toLowerCase();
+  if (!CHARACTER_CAST.some(c => c.toLowerCase() === key)) return null;
+  return `/avatars/${key}.png`;
+};
+
+function Avatar({ seed = 0, size = 36, active = false, name, isHuman = false, imageName }) {
   const cfg = getAvatarConfig(seed, name, isHuman);
+  // imageName overrides the name for image lookup (used so the human can show
+  // a selected character regardless of their display name).
+  const imgSrc = avatarImageFor(imageName || name);
   const [rimLight, rimMid, rimDark] = cfg.rim;
   const [innerLight, innerDark] = cfg.inner;
   // Rim thickness scales gently with size
@@ -1329,10 +1394,21 @@ function Avatar({ seed = 0, size = 36, active = false, name, isHuman = false }) 
           background: "radial-gradient(ellipse, rgba(255,255,255,0.12), transparent 70%)",
           pointerEvents: "none",
         }}/>
-        {/* The bust fills the lower portion of the disc */}
-        <div style={{ width: "128%", height: "128%", marginBottom: "-12%" }}>
-          <GreekBust marble={cfg.marble} style={cfg.bustStyle} gilded={cfg.isHuman} accessory={cfg.accessory}/>
-        </div>
+        {/* The bust (or painted portrait) fills the disc. For images we center
+            the crop (not top-aligned) so faces aren't clipped at the top, and
+            fill the full circle edge to edge. */}
+        {USE_CHARACTER_IMAGES && imgSrc ? (
+          <img
+            src={imgSrc}
+            alt={name || "player"}
+            onError={e => { e.currentTarget.style.display = "none"; }}
+            style={{ position:"absolute", inset:0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 30%", borderRadius: "50%" }}
+          />
+        ) : (
+          <div style={{ width: "128%", height: "128%", marginBottom: "-12%" }}>
+            <GreekBust marble={cfg.marble} style={cfg.bustStyle} gilded={cfg.isHuman} accessory={cfg.accessory}/>
+          </div>
+        )}
       </div>
       {/* Top bevel highlight on the rim */}
       <div aria-hidden="true" style={{
@@ -2569,7 +2645,7 @@ function BetMarker({ marker, playerName, landscape }) {
 function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
   // Safe achievement emitter — no-op if not provided.
   const emitAch = onAchievement || (() => {});
-  const { nH, nB, chips: startChips, ante: anteAmt, denoms, names, botNames, orientation, hintsDefault = true } = cfg;
+  const { nH, nB, chips: startChips, ante: anteAmt, denoms, names, botNames, orientation, hintsDefault = true, selectedAvatar } = cfg;
   // The app is portrait-only. `landscape` is forced false so every
   // `landscape ? ... : ...` branch resolves to the portrait layout. The
   // landscape code paths remain but are inert. Device-level orientation
@@ -2935,15 +3011,21 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
       // The 900ms initial gap is the "between turns" pause where the previous
       // player's seat anim (win-blast / doink-explosion / miss-flash) finishes
       // and the screen is briefly calm before the next turn begins.
+      // Bot decision speed scales with table size: a 5-6 bot table would drag
+      // at full pacing, so crowded tables think faster. Fewer bots keep the
+      // more deliberate, suspenseful timing.
+      const botN = players.filter(x => x.isBot).length;
+      const thinkMs  = botN >= 5 ? 650 : botN === 4 ? 850 : 1100;
+      const settleMs = botN >= 5 ? 450 : botN === 4 ? 600 : 750;
       const t1 = setTimeout(() => {
         setBotThinking(p.id);
         botHandComment(p, slot.cards);
         const t2 = setTimeout(() => {
           setBotThinking(null);
           runBotSlot(slot, p);
-        }, 1100);   // K2: trimmed from 1500 — bots act a touch faster
+        }, thinkMs);
         return () => clearTimeout(t2);
-      }, 750);      // K2: pre-turn settle trimmed from 900
+      }, settleMs);
       return () => clearTimeout(t1);
     } else {
       const isRoundStarter = idx === 0;
@@ -4056,7 +4138,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
           const isActiveSlot = curSlot && curSlot.playerId === p.id;
           const slotAnim = seatAnims[p.id] || null;
           const outerClass = slotAnim==="win"?"win-blast":slotAnim==="doink"?"doink-explosion big-shake":slotAnim==="miss"?"miss-flash":"";
-          const sz = landscape ? 30 : 36;
+          const sz = landscape ? 48 : 58;
           const isInactiveAndPlaying = !isActiveSlot && (phase === "betting" || phase === "blindBet");
           const botCardScale = players.length <= 4 ? 0.92
                           : players.length === 5 ? 0.82
@@ -4068,7 +4150,7 @@ function Game({ cfg, onExit, onCareerComplete, onAchievement }) {
           return (
             <div key={p.id} className={outerClass} style={{ position:"absolute", left:`${seatPos[p.id]?.x}%`, top:`${seatPos[p.id]?.y}%`, transform:`translate(-50%,-50%) scale(${isActiveSlot?1.08:isInactiveAndPlaying?0.92:1})`, display:"flex", flexDirection:"column", alignItems:"center", gap:4, zIndex:isActiveSlot?22:6, borderRadius:14, padding:3, opacity: isInactiveAndPlaying ? 0.55 : 1, transition:"opacity .35s ease, transform .35s ease" }}>
               <div style={{ position:"relative" }}>
-                <Avatar seed={p.avatarSeed} size={sz} active={isActiveSlot} name={p.name} isHuman={!p.isBot} />
+                <Avatar seed={p.avatarSeed} size={sz} active={isActiveSlot} name={p.name} isHuman={!p.isBot} imageName={p.isBot ? p.name : selectedAvatar} />
                 {pendingOffer&&pendingOffer.sellerId===p.id&&<div style={{ position:"absolute", top:-3, right:-3, width:11, height:11, borderRadius:"50%", background:"#D4A843", border:"2px solid #060D08", animation:"pulse 1s infinite" }}/>}
                 {botThinking === p.id && (
                   <div style={{ position:"absolute", bottom:-6, left:"50%", transform:"translateX(-50%)", display:"flex", gap:3, padding:"3px 7px", borderRadius:10, background:"rgba(212,168,67,0.95)", border:"1px solid #8A6010", boxShadow:"0 2px 8px rgba(0,0,0,0.6)" }}>
@@ -5054,7 +5136,44 @@ function HomeScreen({ onCareer, onQuickPlay, onTutorial, onSettings, hasCareer, 
 // ─────────────────────────────────────────────────────────
 // CAREER HOME — bankroll, level, daily stake, stats, play
 // ─────────────────────────────────────────────────────────
-function CareerHome({ career, onPlay, onClaimDaily, onBack, onLeaderboard, onSettings, onProfile }) {
+// Avatar picker — grid of unlocked characters; tap to select. Locked ones
+// (not yet unlocked by level) show dimmed with their unlock level.
+function AvatarPicker({ career, onSelect, onClose }) {
+  const unlocked = new Set(career.unlockedAvatars || []);
+  const items = AVATAR_UNLOCK_ORDER.map((nm, i) => ({
+    name: nm,
+    unlockLevel: i === 0 ? 1 : i * 2,
+    have: unlocked.has(nm),
+  }));
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:400, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(6px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div onClick={e => e.stopPropagation()} className="ios-scroll" style={{ width:"100%", maxWidth:420, maxHeight:"80vh", overflowY:"auto", background:"linear-gradient(170deg,#0E1C12,#070D09)", border:"1.5px solid rgba(212,168,67,0.4)", borderRadius:18, padding:"20px 18px" }}>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", color:"#F0C96A", fontWeight:700, textAlign:"center", marginBottom:4 }}>Choose Your Avatar</div>
+        <p style={{ fontSize:"0.78rem", color:"rgba(245,237,216,0.55)", textAlign:"center", margin:"0 0 16px" }}>Unlock a new character every 2 levels.</p>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
+          {items.map(it => (
+            <button key={it.name} onClick={() => it.have && onSelect(it.name)} disabled={!it.have}
+              style={{ background:"none", border:"none", padding:0, cursor: it.have?"pointer":"default", display:"flex", flexDirection:"column", alignItems:"center", gap:5, opacity: it.have?1:0.4 }}>
+              <div style={{ position:"relative", filter: it.have?"none":"grayscale(1)" }}>
+                <Avatar seed={0} size={70} name={it.name} imageName={it.name} active={career.selectedAvatar===it.name}/>
+                {!it.have && (
+                  <div style={{ position:"absolute", inset:0, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.45)" }}>
+                    <span style={{ fontSize:"0.62rem", color:"#F0C96A", fontWeight:700, textAlign:"center", lineHeight:1.1 }}>Lvl {it.unlockLevel}</span>
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize:"0.7rem", color: it.have?"rgba(245,237,216,0.8)":"rgba(245,237,216,0.4)", fontWeight:600 }}>{it.name}</span>
+            </button>
+          ))}
+        </div>
+        <button onClick={onClose} style={{ ...sBtn, width:"100%", marginTop:18, fontSize:"0.9rem" }}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+function CareerHome({ career, onPlay, onClaimDaily, onBack, onLeaderboard, onSettings, onProfile, onSelectAvatar }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const lvlInfo = xpToNextLevel(career.xp);
   const lvl = getLevelFromXP(career.xp);
   const dailyEligible = canClaimDaily(career);
@@ -5092,6 +5211,20 @@ function CareerHome({ career, onPlay, onClaimDaily, onBack, onLeaderboard, onSet
             {onSettings && <IconBtn onClick={onSettings} label="Settings" icon="dice"/>}
           </div>
         </div>
+
+        {/* Selected avatar — tap to open the picker */}
+        <button onClick={() => setPickerOpen(true)} style={{ background:"none", border:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:6, marginBottom:16, cursor:"pointer" }}>
+          <Avatar seed={0} size={84} name={career.selectedAvatar} imageName={career.selectedAvatar} active/>
+          <span style={{ fontSize:"0.72rem", letterSpacing:"0.1em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase" }}>{career.selectedAvatar} · tap to change</span>
+        </button>
+
+        {pickerOpen && (
+          <AvatarPicker
+            career={career}
+            onSelect={nm => { onSelectAvatar?.(nm); setPickerOpen(false); }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
 
         {/* Career Snapshot — chips, level/rank, XP, next unlock */}
         <div style={{
@@ -5396,9 +5529,10 @@ function CareerSessionSummary({ result, oldBankroll, newBankroll, oldLevel, newL
 // ─────────────────────────────────────────────────────────
 // PROFILE / STATS — change display name + full career stats
 // ─────────────────────────────────────────────────────────
-function ProfileScreen({ career, onRename, onBack, onOpenLegal, onOpenAchievements }) {
+function ProfileScreen({ career, onRename, onBack, onOpenLegal, onOpenAchievements, onSelectAvatar }) {
   const [name, setName] = useState(career.playerName || "Player");
   const [saved, setSaved] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const lvlInfo = xpToNextLevel(career.xp);
   const winRate = career.sessionsPlayed > 0
     ? Math.round((career.sessionsWon / career.sessionsPlayed) * 100)
@@ -5440,6 +5574,19 @@ function ProfileScreen({ career, onRename, onBack, onOpenLegal, onOpenAchievemen
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", color:"#D4A843", fontWeight:700, letterSpacing:"0.04em" }}>Profile</div>
           <div style={{ width:60 }}/>
         </div>
+
+        {/* Avatar — tap to change */}
+        <button onClick={() => setPickerOpen(true)} style={{ background:"none", border:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:6, marginBottom:16, cursor:"pointer" }}>
+          <Avatar seed={0} size={88} name={career.selectedAvatar} imageName={career.selectedAvatar} active/>
+          <span style={{ fontSize:"0.72rem", letterSpacing:"0.1em", color:"rgba(212,168,67,0.7)", fontWeight:700, textTransform:"uppercase" }}>{career.selectedAvatar} · tap to change</span>
+        </button>
+        {pickerOpen && (
+          <AvatarPicker
+            career={career}
+            onSelect={nm => { onSelectAvatar?.(nm); setPickerOpen(false); }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
 
         {/* Name editor */}
         <div style={{ ...card, width:"100%", maxWidth:440, marginBottom:14 }}>
@@ -5645,6 +5792,7 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
       denoms: [1, 5, 10, 25, 50, 100, 500].filter(d => d <= table.buyIn),
       names: [career?.playerName || displayName || "Player"],
       botNames,
+      selectedAvatar: career?.selectedAvatar || null,
       orientation: "portrait",
       hintsDefault: true,
       // Each career table has its own look — felt, card back and chips get
@@ -5719,6 +5867,7 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
         onLeaderboard={() => onShowLeaderboard("careerHome")}
         onSettings={() => openSettings("careerHome")}
         onProfile={() => setRoute("profile")}
+        onSelectAvatar={(nm) => setCareer(c => ({ ...c, selectedAvatar: nm }))}
       />
       {pendingUnlock && (
         <UnlockRewardPopup milestone={pendingUnlock} onClose={() => dismissUnlock(pendingUnlock)} />
@@ -5733,6 +5882,7 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
       onBack={() => setRoute("careerHome")}
       onOpenLegal={(page) => openLegal(page, "profile")}
       onOpenAchievements={() => setRoute("achievements")}
+      onSelectAvatar={(nm) => setCareer(c => ({ ...c, selectedAvatar: nm }))}
     />
   );
 
