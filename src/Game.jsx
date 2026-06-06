@@ -124,10 +124,13 @@ const isMythical = (a, b) => spreadOf(a, b) === 2;
 // Master character cast — every bot is drawn from this pool at random, at any
 // table (no fixed per-table rosters). Names map to /avatars/<name>.png images.
 const CHARACTER_CAST = [
-  "Cody", "Isaac", "Graham", "Jerry", "Parker", "Emmanuel", "Rube", "Michael",
+  "Cody", "Graham", "Jerry", "Parker", "Emmanuel", "Rube", "Michael",
   "Landen", "Houston", "Dalton", "Jayton", "Sterling", "Augustus", "Vance",
   "Crews", "Maximilian", "Bryson", "Desmond", "Jin",
   "Vivian", "Renata", "Mei", "Gloria", "Kori", "Simone",
+  "Bill", "Billy", "Damion", "Don", "Hastings", "Jackson", "Jake",
+  "Jeremiah", "Jimmy", "Malachi", "Mike", "Patty", "Payne", "Preston",
+  "Ruby", "Sandra", "Tom", "Vivienne", "Wade",
 ];
 const BOT_NAMES = CHARACTER_CAST;
 
@@ -141,8 +144,11 @@ const BOT_NAMES = CHARACTER_CAST;
 const AVATAR_UNLOCK_ORDER = [
   "Cody", "Vivian", "Parker", "Dalton", "Mei", "Houston", "Renata", "Michael",
   "Sterling", "Kori", "Jayton", "Gloria", "Vance", "Simone", "Augustus", "Jin",
-  "Crews", "Bryson", "Desmond", "Emmanuel", "Maximilian", "Isaac", "Graham",
+  "Crews", "Bryson", "Desmond", "Emmanuel", "Maximilian", "Graham",
   "Landen", "Rube", "Jerry",
+  "Ruby", "Damion", "Vivienne", "Jackson", "Sandra", "Jake", "Hastings",
+  "Patty", "Jimmy", "Tom", "Malachi", "Billy", "Payne", "Preston",
+  "Bill", "Don", "Mike", "Jeremiah", "Wade",
 ];
 // How many avatars are unlocked at a given level: one at level 1 (a starter),
 // then one more every 2 levels (lvl 2 → 2 unlocked, lvl 4 → 3, …).
@@ -2082,7 +2088,7 @@ function RulesPage({ onClose }) {
 // QUICK PLAY SETUP — customization screen (themes, chips, cards,
 // avatar, settings). Everything gated by career level.
 // ─────────────────────────────────────────────────────────
-function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName = "Player" }) {
+function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName = "Player", selectedAvatar }) {
   const lvl = careerLevel || 1;
 
   // Initialize from saved settings, sanitized against the current level.
@@ -2150,6 +2156,7 @@ function Setup({ onStart, onShowTutorial, onBack, careerLevel = 1, displayName =
       botNames: shuffleBotNames(),
       orientation: "portrait",
       hintsDefault: true,
+      selectedAvatar: selectedAvatar || "Cody",
       qp: {
         tableThemeId: sel.tableThemeId,
         chipSetId: sel.chipSetId,
@@ -5914,6 +5921,7 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
       onBack={() => setRoute("home")}
       careerLevel={career?.level || 1}
       displayName={displayName}
+      selectedAvatar={career?.selectedAvatar || "Cody"}
     />
   );
 
