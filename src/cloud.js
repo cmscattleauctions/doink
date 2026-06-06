@@ -14,8 +14,9 @@
 // standings stay current without any extra bookkeeping.
 // ═══════════════════════════════════════════════════════════
 
-import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
-import { db } from "./firebase.js";
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
+import { deleteUser } from "firebase/auth";
+import { db, auth } from "./firebase.js";
 
 // ── Career: load ────────────────────────────────────────────
 // Returns the stored career object, or null if the player has none yet.
@@ -62,5 +63,21 @@ export async function loadLeaderboard() {
   } catch (e) {
     console.error("loadLeaderboard failed:", e);
     return [];
+  }
+}
+
+// ── Account: delete everything ──────────────────────────────
+// Apple App Store guideline 5.1.1(v) requires in-app account deletion.
+// Removes the player's Firestore data, then deletes their Firebase Auth
+// account. If Firebase requires a recent login (auth/requires-recent-login),
+// the caller should ask the user to sign in again and retry.
+export async function deleteAccountCloud(uid) {
+  // Delete Firestore docs first (best-effort — continue even if one fails).
+  try { await deleteDoc(doc(db, "careers", uid)); } catch (e) { console.error("delete career doc:", e); }
+  try { await deleteDoc(doc(db, "leaderboard", uid)); } catch (e) { console.error("delete leaderboard row:", e); }
+  // Then delete the auth user. This can throw auth/requires-recent-login.
+  const user = auth.currentUser;
+  if (user) {
+    await deleteUser(user); // may throw — caller handles
   }
 }

@@ -1,5 +1,8 @@
 {
-  "appId": "com.yourname.doink",
-  "appName": "Doink",
-  "webDir": "dist"
+  "appId": "com.gappergame.gapper",
+  "appName": "Gapper",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
 }

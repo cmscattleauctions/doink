@@ -1,16 +1,87 @@
 // ═══════════════════════════════════════════════════════════
 // LOGIN SCREEN — Google sign-in gate
+// ───────────────────────────────────────────────────────────
+// Sign-in works two different ways depending on where we're running:
+//
+//   • WEB (browser):   Firebase signInWithPopup — the normal flow.
+//   • NATIVE (iOS app): signInWithPopup CANNOT work inside a Capacitor
+//                       WebView (the popup is blocked → auth/cancelled-popup).
+//                       Instead we use the @capacitor-firebase/authentication
+//                       plugin to do a NATIVE Google sign-in, get a credential,
+//                       then sign in to the JS Firebase SDK with that credential
+//                       so the rest of the app (Firestore, etc.) works unchanged.
+//
+// The native plugin is imported lazily and guarded, so the web build never
+// depends on it and nothing breaks if it isn't installed yet.
 // ═══════════════════════════════════════════════════════════
-import { signInWithPopup } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider, OAuthProvider, signInWithCredential } from "firebase/auth";
 import { auth, googleProvider } from "./firebase.js";
+
+// Is this running inside the native Capacitor app?
+function isNative() {
+  try {
+    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  } catch {
+    return false;
+  }
+}
+
+// Native Google sign-in via @capacitor-firebase/authentication.
+// Returns true on success. Throws on real errors so the caller can show them.
+async function nativeGoogleSignIn() {
+  // Lazy import so the web bundle doesn't require the plugin.
+  const mod = await import(/* @vite-ignore */ "@capacitor-firebase/authentication");
+  const FirebaseAuthentication = mod.FirebaseAuthentication;
+  // Ask the native layer to run Google sign-in. skipNativeAuth is left at its
+  // default (false) — the plugin signs in to native Firebase; we then mirror
+  // that into the JS SDK below using the returned idToken so Firestore works.
+  const result = await FirebaseAuthentication.signInWithGoogle();
+  const idToken = result?.credential?.idToken;
+  if (!idToken) throw new Error("No Google credential returned from native sign-in.");
+  const credential = GoogleAuthProvider.credential(idToken);
+  await signInWithCredential(auth, credential);
+  return true;
+}
+
+// Native Apple sign-in via @capacitor-firebase/authentication.
+async function nativeAppleSignIn() {
+  const mod = await import(/* @vite-ignore */ "@capacitor-firebase/authentication");
+  const FirebaseAuthentication = mod.FirebaseAuthentication;
+  const result = await FirebaseAuthentication.signInWithApple();
+  const idToken = result?.credential?.idToken;
+  if (!idToken) throw new Error("No Apple credential returned from native sign-in.");
+  // Apple requires the raw nonce when present; the plugin handles it natively.
+  const provider = new OAuthProvider("apple.com");
+  const credential = provider.credential({
+    idToken,
+    rawNonce: result?.credential?.nonce,
+  });
+  await signInWithCredential(auth, credential);
+  return true;
+}
 
 export default function LoginScreen({ error, reason, onBack }) {
   const signIn = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      if (isNative()) {
+        await nativeGoogleSignIn();
+      } else {
+        await signInWithPopup(auth, googleProvider);
+      }
     } catch (e) {
-      // Popup blocked / closed — App.jsx surfaces persistent errors.
       console.error("sign-in failed:", e);
+    }
+  };
+
+  const signInApple = async () => {
+    try {
+      if (isNative()) {
+        await nativeAppleSignIn();
+      } else {
+        await signInWithPopup(auth, new OAuthProvider("apple.com"));
+      }
+    } catch (e) {
+      console.error("apple sign-in failed:", e);
     }
   };
 
@@ -47,6 +118,16 @@ export default function LoginScreen({ error, reason, onBack }) {
           boxShadow: "0 8px 28px rgba(212,168,67,0.42), inset 0 1px 0 rgba(255,240,200,0.55)",
         }}>
           Sign in with Google
+        </button>
+        <button onClick={signInApple} style={{
+          width: "100%", padding: "15px 24px", borderRadius: 16, border: "none",
+          background: "#000", marginTop: 12,
+          color: "#fff", fontFamily: "'DM Sans', sans-serif", fontSize: "1.02rem",
+          fontWeight: 600, letterSpacing: "0.02em", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
+        }}>
+           Sign in with Apple
         </button>
         {onBack && (
           <button onClick={onBack} style={{

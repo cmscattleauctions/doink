@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase.js";
-import { loadCareerCloud, saveCareerCloud } from "./cloud.js";
+import { loadCareerCloud, saveCareerCloud, deleteAccountCloud } from "./cloud.js";
 import { GameRoot, normalizeCareer, createDefaultCareer } from "./Game.jsx";
 import LoginScreen from "./LoginScreen.jsx";
 import Leaderboard from "./Leaderboard.jsx";
@@ -134,6 +134,17 @@ export default function App() {
     signOut(auth);
   };
 
+  // In-app account deletion (Apple App Store guideline 5.1.1(v)). Wipes the
+  // player's cloud data and Firebase Auth account. Throws on failure (e.g.
+  // auth/requires-recent-login) so the Settings UI can show guidance.
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    await deleteAccountCloud(user.uid);
+    // Auth user is now deleted; onAuthStateChanged will flip to signed-out and
+    // the app returns to the start automatically.
+  };
+
   // ── Render ────────────────────────────────────────────────
 
   // Legal pages are reachable directly by URL hash — e.g.
@@ -202,6 +213,7 @@ export default function App() {
       isGuest={!user}
       initialRoute={gameReturnRoute}
       onSignOut={user ? handleSignOut : undefined}
+      onDeleteAccount={user ? handleDeleteAccount : undefined}
       onRequireSignIn={() => setRoute("signin")}
       onShowLeaderboard={(fromRoute) => { setGameReturnRoute(fromRoute || "home"); setRoute("leaderboard"); }}
       onTutorialTrigger={maybeShowTutorial}

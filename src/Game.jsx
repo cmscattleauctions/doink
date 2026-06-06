@@ -2009,7 +2009,7 @@ function TableDrawers({ openDrawer, setOpenDrawer, log, marketContent }) {
           trading is temporarily disabled. The market drawer code below is
           left dormant (openDrawer can no longer become "market") so the
           feature can be restored later without a rebuild. */}
-      <div style={{ flexShrink:0, display:"flex", justifyContent:"center", alignItems:"center", padding:"6px 14px calc(8px + env(safe-area-inset-bottom))", zIndex:30 }}>
+      <div style={{ flexShrink:0, display:"flex", justifyContent:"center", alignItems:"center", padding:"6px 14px 8px", zIndex:30 }}>
         <button onClick={() => setOpenDrawer("log")} style={drawerTabStyle}>
           <span style={{ fontSize:"0.62rem", letterSpacing:"0.12em" }}>▤ LOG</span>
         </button>
@@ -4840,7 +4840,10 @@ function UnlockRewardPopup({ milestone, onClose }) {
 // About Gapper, Legal, Danger Zone. (Sound & Haptics is a
 // placeholder filled in by J15.)
 // ─────────────────────────────────────────────────────────
-function SettingsScreen({ career, isGuest, onBack, onResetCareer, onOpenLegal, onSignOut, onRequireSignIn }) {
+function SettingsScreen({ career, isGuest, onBack, onResetCareer, onOpenLegal, onSignOut, onRequireSignIn, onDeleteAccount }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState("");
   // Notifications toggle — placeholder. Persisted to localStorage so the
   // choice sticks; no notification system is wired to it yet.
   const [notif, setNotif] = useState(() => {
@@ -4904,6 +4907,39 @@ function SettingsScreen({ career, isGuest, onBack, onResetCareer, onOpenLegal, o
                 Signed in{career?.playerName ? ` as ${career.playerName}` : ""}.
               </div>
               {onSignOut && <button onClick={onSignOut} style={{ ...sBtn, width:"100%", fontSize:"0.88rem" }}>Sign Out</button>}
+              {onDeleteAccount && !confirmDelete && (
+                <button onClick={() => { setDeleteErr(""); setConfirmDelete(true); }} style={{ ...sBtn, width:"100%", fontSize:"0.82rem", marginTop:10, color:"#E07A6B", border:"1px solid rgba(224,122,107,0.4)" }}>
+                  Delete My Account
+                </button>
+              )}
+              {confirmDelete && (
+                <div style={{ marginTop:12, padding:14, borderRadius:12, background:"rgba(224,122,107,0.08)", border:"1px solid rgba(224,122,107,0.35)" }}>
+                  <div style={{ fontSize:"0.82rem", color:"rgba(245,237,216,0.85)", lineHeight:1.5, marginBottom:12 }}>
+                    This permanently deletes your account, career progress, chips, and leaderboard entry. This <b>cannot be undone</b>.
+                  </div>
+                  {deleteErr && <div style={{ fontSize:"0.78rem", color:"#E07A6B", marginBottom:10 }}>{deleteErr}</div>}
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button disabled={deleting} onClick={() => setConfirmDelete(false)} style={{ ...sBtn, flex:1, fontSize:"0.84rem" }}>Cancel</button>
+                    <button disabled={deleting} onClick={async () => {
+                      setDeleting(true); setDeleteErr("");
+                      try {
+                        await onDeleteAccount();
+                        // On success the app signs out and returns to start.
+                      } catch (e) {
+                        const code = e?.code || "";
+                        if (code === "auth/requires-recent-login") {
+                          setDeleteErr("For your security, please sign out, sign in again, then delete. (Recent login required.)");
+                        } else {
+                          setDeleteErr("Couldn't delete the account. Please try again, or contact support.");
+                        }
+                        setDeleting(false);
+                      }
+                    }} style={{ ...sBtn, flex:1, fontSize:"0.84rem", background:"linear-gradient(160deg,#7A2A20,#E0573C)", color:"#fff", border:"none", opacity: deleting?0.6:1 }}>
+                      {deleting ? "Deleting…" : "Delete Forever"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -5699,7 +5735,7 @@ export { createDefaultCareer, normalizeCareer, CAREER_KEY };
 //     onSignOut      — sign the user out
 //     onShowLeaderboard — open the leaderboard screen
 //     displayName    — the signed-in user's display name
-export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, onRequireSignIn, onShowLeaderboard, onTutorialTrigger, displayName }) {
+export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, onDeleteAccount, onRequireSignIn, onShowLeaderboard, onTutorialTrigger, displayName }) {
   // Route state: "home" | "tutorial" | "quickSetup" | "careerHome" | "careerTables" | "quickGame" | "careerGame" | "careerSummary"
   // Start at initialRoute so returning from the leaderboard (which remounts
   // GameRoot) lands the player back where they were — Home or Career.
@@ -5930,6 +5966,7 @@ export function GameRoot({ career, setCareer, isGuest, initialRoute, onSignOut, 
       onOpenLegal={(page) => openLegal(page, "settings")}
       onSignOut={onSignOut}
       onRequireSignIn={onRequireSignIn}
+      onDeleteAccount={onDeleteAccount}
     />
   );
 

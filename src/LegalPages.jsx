@@ -199,9 +199,9 @@ export function AccountDeletion({ onBack }) {
       <H>What May Be Retained</H>
       <P>Some information may be retained for a limited time if necessary for security, fraud prevention, abuse investigation, legal compliance, backup or system recovery processes, or aggregated/anonymized analytics. Any retained information will be handled according to the Gapper Privacy Policy.</P>
 
-      <H>How to Request Account Deletion</H>
-      <P>To request account deletion, email {SUPPORT_EMAIL} with the subject line "Gapper Account Deletion Request." Please include the email address used for your Gapper account, your display name if applicable, and a short statement that you want your Gapper account deleted.</P>
-      <P>Example message: "I would like to delete my Gapper account and associated data. Account email: [your account email]. Display name: [your display name]."</P>
+      <H>How to Delete Your Account</H>
+      <P>You can delete your account directly inside the app: open Settings, then tap "Delete My Account" and confirm. This immediately and permanently deletes your account and associated data from within the app — no email or waiting period required.</P>
+      <P>If you are unable to access the app, you may also request account deletion by email. Email {SUPPORT_EMAIL} with the subject line "Gapper Account Deletion Request." Please include the email address used for your Gapper account, your display name if applicable, and a short statement that you want your Gapper account deleted.</P>
 
       <H>Verification</H>
       <P>To protect user accounts, we may ask you to verify that you own the account before deleting it. This may include confirming the email address associated with the account or responding from the account email address.</P>
